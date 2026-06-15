@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "669260082445",
+    "project_id": "barber-10ed3",
+    "storage_bucket": "barber-10ed3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669260082445:android:f571a0f274e97200b45444",
+        "android_client_info": {
+          "package_name": "com.example.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPzbbU7wXbrHW33mI39KIUTfAMG2t13Vk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669260082445:android:cf11ccfcdd1f75f8b45444",
+        "android_client_info": {
+          "package_name": "example.cda"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPzbbU7wXbrHW33mI39KIUTfAMG2t13Vk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
