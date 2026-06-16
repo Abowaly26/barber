@@ -112,17 +112,8 @@ class _HomeTab extends StatelessWidget {
           _buildBookingCards(context),
           SizedBox(height: 24.h),
 
-          // ── Nearby Salons ──
-          _buildSectionHeader(
-            title: 'Nearby Salons',
-            showSeeAll: true,
-            onSeeAll: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SalonsListScreen()),
-            ),
-          ),
-          SizedBox(height: 12.h),
-          _buildSalonRow(context),
+          // ── My Bookings ──
+          const _MyBookingsSection(),
           SizedBox(height: 24.h),
 
           // ── Quick Services ──
@@ -697,34 +688,23 @@ class _SearchTab extends StatelessWidget {
   }
 }
 
-class _BookingsTab extends StatefulWidget {
-  const _BookingsTab();
+// ============================================================
+// MY BOOKINGS SECTION (reused in Home Tab & Bookings Tab)
+// ============================================================
+class _MyBookingsSection extends StatefulWidget {
+  const _MyBookingsSection();
 
   @override
-  State<_BookingsTab> createState() => _BookingsTabState();
+  State<_MyBookingsSection> createState() => _MyBookingsSectionState();
 }
 
-class _BookingsTabState extends State<_BookingsTab> {
+class _MyBookingsSectionState extends State<_MyBookingsSection> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final Map<String, Future<Map<String, dynamic>>> _barberCache = {};
-
-  DateTime _selectedDate = DateTime.now();
-  String? _selectedBarberId;
-  String? _selectedBarberName;
-  Map<String, dynamic>? _selectedSlot;
-  bool _isConfirming = false;
-
-  Stream<QuerySnapshot>? _barbersStream;
-  Stream<QuerySnapshot>? _slotsStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _myBookingsStream;
 
   @override
   void initState() {
     super.initState();
-    _barbersStream = _firestore
-        .collection('users')
-        .where('role', isEqualTo: 'barber')
-        .snapshots();
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       _myBookingsStream = _firestore
@@ -734,35 +714,13 @@ class _BookingsTabState extends State<_BookingsTab> {
     }
   }
 
-  void _updateSlotsStream() {
-    if (_selectedBarberId != null) {
-      _slotsStream = _firestore
-          .collection('appointments')
-          .where('barberId', isEqualTo: _selectedBarberId)
-          .where('status', isEqualTo: 'available')
-          .snapshots();
-    } else {
-      _slotsStream = null;
-    }
-  }
-
   String _formatDate(String? value) {
     if (value == null || value.isEmpty) return 'Not scheduled';
     try {
       final date = DateTime.parse(value);
       const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
       ];
       return '${months[date.month - 1]} ${date.day}, ${date.year}';
     } catch (_) {
@@ -782,14 +740,6 @@ class _BookingsTabState extends State<_BookingsTab> {
       final parts = value.split('T');
       return parts.length > 1 ? parts[1].substring(0, 5) : value;
     }
-  }
-
-  Future<Map<String, dynamic>> _getBarber(String? barberId) {
-    if (barberId == null || barberId.isEmpty) return Future.value({});
-    return _barberCache.putIfAbsent(barberId, () async {
-      final doc = await _firestore.collection('users').doc(barberId).get();
-      return doc.data() ?? {};
-    });
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortedDocs(
@@ -820,6 +770,471 @@ class _BookingsTabState extends State<_BookingsTab> {
         return 'Cancelled';
       default:
         return 'Unknown';
+    }
+  }
+
+  Widget _buildStatusPill(String label, {bool filled = false}) {
+    Color bgColor;
+    Color textColor;
+
+    switch (label.toLowerCase()) {
+      case 'available':
+        bgColor = filled ? AppColors.primary : AppColors.primaryLight;
+        textColor = filled ? Colors.white : AppColors.primary;
+        break;
+      case 'pending':
+        bgColor = filled ? const Color(0xFFFFA000) : const Color(0xFFFFF8E1);
+        textColor = filled ? Colors.white : const Color(0xFFFFA000);
+        break;
+      case 'confirmed':
+      case 'booked':
+        bgColor = filled ? const Color(0xFF4CAF50) : const Color(0xFFE8F5E9);
+        textColor = filled ? Colors.white : const Color(0xFF4CAF50);
+        break;
+      case 'completed':
+        bgColor = filled ? const Color(0xFF9E9E9E) : const Color(0xFFF5F5F5);
+        textColor = filled ? Colors.white : const Color(0xFF9E9E9E);
+        break;
+      case 'cancelled':
+        bgColor = filled ? AppColors.dangerRed : const Color(0xFFFFEBEE);
+        textColor = filled ? Colors.white : AppColors.dangerRed;
+        break;
+      default:
+        bgColor = filled ? AppColors.textGrey : const Color(0xFFF5F5F5);
+        textColor = filled ? Colors.white : AppColors.textGrey;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(18.r),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 10.sp,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookingCard(Map<String, dynamic> booking) {
+    final statusLabel = _bookingStatusLabel(booking['status']);
+    final status = booking['status']?.toString().toLowerCase() ?? '';
+    final isPending = status == 'pending';
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 0, vertical: 6.h),
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: AppColors.borderGrey.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48.w,
+                height: 48.w,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.primaryLight,
+                      AppColors.primaryLight.withOpacity(0.6),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16.r),
+                ),
+                child: Icon(
+                  Icons.calendar_today_rounded,
+                  color: AppColors.primary,
+                  size: 22.w,
+                ),
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            booking['serviceName'] ?? 'Confirmed Booking',
+                            style: TextStyle(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textDark,
+                              letterSpacing: -0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        _buildStatusPill(statusLabel, filled: true),
+                      ],
+                    ),
+                    SizedBox(height: 10.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 6.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFB),
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.access_time_rounded,
+                            color: AppColors.primary,
+                            size: 14.w,
+                          ),
+                          SizedBox(width: 6.w),
+                          Flexible(
+                            child: Text(
+                              '${_formatDate(booking['dateTime'])} • ${_formatTime(booking['dateTime'])}',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (isPending) ...[
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => _handleCancelBooking(booking),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.dangerRed,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 10.h,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                ),
+                child: Text(
+                  'Cancel Booking',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoState({
+    required IconData icon,
+    required String title,
+    required String message,
+    Color? color,
+  }) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 40.w, vertical: 32.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 60.w,
+              height: 60.w,
+              decoration: BoxDecoration(
+                color: (color ?? AppColors.primary).withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 30.w,
+                color: (color ?? AppColors.primary).withOpacity(0.6),
+              ),
+            ),
+            SizedBox(height: 12.h),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w900,
+                color: color ?? AppColors.textDark,
+                letterSpacing: -0.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.textGrey,
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleCancelBooking(Map<String, dynamic> booking) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Booking'),
+        content: const Text('Are you sure you want to cancel this booking?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.dangerRed),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final bookingId = booking['id'] as String?;
+      final barberId = booking['barberId'] as String?;
+      if (bookingId == null || barberId == null) return;
+
+      final dateStr = _formatDate(booking['dateTime']);
+      final timeStr = _formatTime(booking['dateTime']);
+
+      await _firestore.collection('appointments').doc(bookingId).update({
+        'status': 'cancelled',
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      final userProfile = context.read<ProfileProvider>().currentUser;
+      final customerName =
+          userProfile?.name ?? currentUser.displayName ?? 'Customer';
+      final chatId = '${currentUser.uid}_$barberId';
+      final timestamp = FieldValue.serverTimestamp();
+      final cancellationMessage =
+          '❌ تم إلغاء الحجز المعاد: $dateStr الساعة $timeStr';
+
+      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+        'customerId': currentUser.uid,
+        'customerName': customerName,
+        'barberId': barberId,
+        'barberName': booking['barberName'] ?? 'Your Barber',
+        'lastMessage': cancellationMessage,
+        'lastMessageTime': timestamp,
+        'unreadByBarber': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add({
+            'senderId': 'system',
+            'senderName': 'System',
+            'message': cancellationMessage,
+            'timestamp': timestamp,
+            'type': 'system_cancellation',
+          });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم إلغاء الحجز بنجاح'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel booking: $e'),
+            backgroundColor: AppColors.dangerRed,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'My Bookings',
+          style: TextStyle(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textDark,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        if (currentUser == null)
+          _buildInfoState(
+            icon: Icons.lock_outline_rounded,
+            title: 'Sign in required',
+            message: 'Sign in to view and manage your bookings.',
+          )
+        else
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _myBookingsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32.h),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                      strokeWidth: 3,
+                    ),
+                  ),
+                );
+              }
+
+              final bookings = snapshot.hasData
+                  ? _sortedDocs(snapshot.data!)
+                  : [];
+              if (bookings.isEmpty) {
+                return _buildInfoState(
+                  icon: Icons.event_busy_rounded,
+                  title: 'No bookings yet',
+                  message:
+                      'Confirmed bookings will show here once you reserve a time.',
+                );
+              }
+
+              return Column(
+                children: [
+                  ...bookings
+                      .map((doc) => _buildBookingCard(doc.data()))
+                      .toList(),
+                  SizedBox(height: 8.h),
+                ],
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _BookingsTab extends StatefulWidget {
+  const _BookingsTab();
+
+  @override
+  State<_BookingsTab> createState() => _BookingsTabState();
+}
+
+class _BookingsTabState extends State<_BookingsTab> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  DateTime _selectedDate = DateTime.now();
+  String? _selectedBarberId;
+  String? _selectedBarberName;
+  Map<String, dynamic>? _selectedSlot;
+  bool _isConfirming = false;
+
+  Stream<QuerySnapshot>? _barbersStream;
+  Stream<QuerySnapshot>? _slotsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _barbersStream = _firestore
+        .collection('users')
+        .where('role', isEqualTo: 'barber')
+        .snapshots();
+  }
+
+  void _updateSlotsStream() {
+    if (_selectedBarberId != null) {
+      _slotsStream = _firestore
+          .collection('appointments')
+          .where('barberId', isEqualTo: _selectedBarberId)
+          .where('status', isEqualTo: 'available')
+          .snapshots();
+    } else {
+      _slotsStream = null;
+    }
+  }
+
+  String _formatDate(String? value) {
+    if (value == null || value.isEmpty) return 'Not scheduled';
+    try {
+      final date = DateTime.parse(value);
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (_) {
+      return value.split('T').first;
+    }
+  }
+
+  String _formatTime(String? value) {
+    if (value == null || value.isEmpty) return '--:--';
+    try {
+      final date = DateTime.parse(value);
+      final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+      final minute = date.minute.toString().padLeft(2, '0');
+      final period = date.hour >= 12 ? 'PM' : 'AM';
+      return '$hour:$minute $period';
+    } catch (_) {
+      final parts = value.split('T');
+      return parts.length > 1 ? parts[1].substring(0, 5) : value;
     }
   }
 
@@ -1361,94 +1776,6 @@ class _BookingsTabState extends State<_BookingsTab> {
     );
   }
 
-  Future<void> _handleCancelBooking(Map<String, dynamic> booking) async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Booking'),
-        content: const Text('Are you sure you want to cancel this booking?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.dangerRed),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final bookingId = booking['id'] as String?;
-      final barberId = booking['barberId'] as String?;
-      if (bookingId == null || barberId == null) return;
-
-      final dateStr = _formatDate(booking['dateTime']);
-      final timeStr = _formatTime(booking['dateTime']);
-
-      await _firestore.collection('appointments').doc(bookingId).update({
-        'status': 'cancelled',
-        'updatedAt': DateTime.now().toIso8601String(),
-      });
-
-      final userProfile = context.read<ProfileProvider>().currentUser;
-      final customerName =
-          userProfile?.name ?? currentUser.displayName ?? 'Customer';
-      final chatId = '${currentUser.uid}_$barberId';
-      final timestamp = FieldValue.serverTimestamp();
-      final cancellationMessage =
-          '❌ تم إلغاء الحجز المعاد: $dateStr الساعة $timeStr';
-
-      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
-        'customerId': currentUser.uid,
-        'customerName': customerName,
-        'barberId': barberId,
-        'barberName': booking['barberName'] ?? 'Your Barber',
-        'lastMessage': cancellationMessage,
-        'lastMessageTime': timestamp,
-        'unreadByBarber': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-
-      await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .add({
-            'senderId': 'system',
-            'senderName': 'System',
-            'message': cancellationMessage,
-            'timestamp': timestamp,
-            'type': 'system_cancellation',
-          });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم إلغاء الحجز بنجاح'),
-            backgroundColor: AppColors.successGreen,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to cancel booking: $e'),
-            backgroundColor: AppColors.dangerRed,
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _handleConfirmBooking() async {
     if (_selectedSlot == null) return;
 
@@ -1576,307 +1903,6 @@ class _BookingsTabState extends State<_BookingsTab> {
     );
   }
 
-  Widget _buildStatusPill(String label, {bool filled = false}) {
-    Color bgColor;
-    Color textColor;
-
-    switch (label.toLowerCase()) {
-      case 'available':
-        bgColor = filled ? AppColors.primary : AppColors.primaryLight;
-        textColor = filled ? Colors.white : AppColors.primary;
-        break;
-      case 'pending':
-        bgColor = filled ? const Color(0xFFFFA000) : const Color(0xFFFFF8E1);
-        textColor = filled ? Colors.white : const Color(0xFFFFA000);
-        break;
-      case 'confirmed':
-      case 'booked':
-        bgColor = filled ? const Color(0xFF4CAF50) : const Color(0xFFE8F5E9);
-        textColor = filled ? Colors.white : const Color(0xFF4CAF50);
-        break;
-      case 'completed':
-        bgColor = filled ? const Color(0xFF9E9E9E) : const Color(0xFFF5F5F5);
-        textColor = filled ? Colors.white : const Color(0xFF9E9E9E);
-        break;
-      case 'cancelled':
-        bgColor = filled ? AppColors.dangerRed : const Color(0xFFFFEBEE);
-        textColor = filled ? Colors.white : AppColors.dangerRed;
-        break;
-      default:
-        bgColor = filled ? AppColors.textGrey : const Color(0xFFF5F5F5);
-        textColor = filled ? Colors.white : AppColors.textGrey;
-    }
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(18.r),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 10.sp,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBookingCard(Map<String, dynamic> booking) {
-    final statusLabel = _bookingStatusLabel(booking['status']);
-    final status = booking['status']?.toString().toLowerCase() ?? '';
-    final isPending = status == 'pending';
-
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 6.h),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: AppColors.borderGrey.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 15,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48.w,
-                height: 48.w,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.primaryLight,
-                      AppColors.primaryLight.withOpacity(0.6),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16.r),
-                ),
-                child: Icon(
-                  Icons.calendar_today_rounded,
-                  color: AppColors.primary,
-                  size: 22.w,
-                ),
-              ),
-              SizedBox(width: 14.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            booking['serviceName'] ?? 'Confirmed Booking',
-                            style: TextStyle(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textDark,
-                              letterSpacing: -0.2,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        SizedBox(width: 10.w),
-                        _buildStatusPill(statusLabel, filled: true),
-                      ],
-                    ),
-                    SizedBox(height: 10.h),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.w,
-                        vertical: 6.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFB),
-                        borderRadius: BorderRadius.circular(10.r),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.access_time_rounded,
-                            color: AppColors.primary,
-                            size: 14.w,
-                          ),
-                          SizedBox(width: 6.w),
-                          Flexible(
-                            child: Text(
-                              '${_formatDate(booking['dateTime'])} • ${_formatTime(booking['dateTime'])}',
-                              style: TextStyle(
-                                fontSize: 12.sp,
-                                color: AppColors.textDark,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (isPending) ...[
-            SizedBox(height: 12.h),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _handleCancelBooking(booking),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.dangerRed,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 10.h,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                ),
-                child: Text(
-                  'Cancel Booking',
-                  style: TextStyle(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoState({
-    required IconData icon,
-    required String title,
-    required String message,
-    Color? color,
-  }) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 40.w, vertical: 60.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80.w,
-              height: 80.w,
-              decoration: BoxDecoration(
-                color: (color ?? AppColors.primary).withOpacity(0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: 40.w,
-                color: (color ?? AppColors.primary).withOpacity(0.6),
-              ),
-            ),
-            SizedBox(height: 20.h),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 20.sp,
-                fontWeight: FontWeight.w900,
-                color: color ?? AppColors.textDark,
-                letterSpacing: -0.3,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 10.h),
-            Text(
-              message,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: AppColors.textGrey,
-                height: 1.5,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMyBookings() {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionTitle(
-          'My Bookings',
-          'Your upcoming and confirmed appointments',
-        ),
-        if (currentUser == null)
-          _buildInfoState(
-            icon: Icons.lock_outline_rounded,
-            title: 'Sign in required',
-            message: 'Sign in to view and manage your bookings.',
-          )
-        else
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _myBookingsStream,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40.h),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primary,
-                      strokeWidth: 3,
-                    ),
-                  ),
-                );
-              }
-
-              final bookings = snapshot.hasData
-                  ? _sortedDocs(snapshot.data!)
-                  : [];
-              if (bookings.isEmpty) {
-                return _buildInfoState(
-                  icon: Icons.event_busy_rounded,
-                  title: 'No bookings yet',
-                  message:
-                      'Confirmed bookings will show here once you reserve a time.',
-                );
-              }
-
-              return Column(
-                children: [
-                  ...bookings
-                      .map((doc) => _buildBookingCard(doc.data()))
-                      .toList(),
-                  SizedBox(height: 40.h),
-                ],
-              );
-            },
-          ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1890,7 +1916,7 @@ class _BookingsTabState extends State<_BookingsTab> {
               if (_selectedBarberId != null) _buildDateSelector(),
               if (_selectedBarberId != null) _buildTimeSlots(),
               if (_selectedBarberId != null) _buildConfirmButton(),
-              _buildMyBookings(),
+              const _MyBookingsSection(),
             ],
           ),
         ),
