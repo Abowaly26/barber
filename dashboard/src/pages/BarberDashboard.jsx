@@ -5,6 +5,7 @@ import { useAuth } from '../App';
 import { db } from '../firebase';
 import { 
   collection, 
+  getDoc,
   getDocs, 
   query, 
   where, 
@@ -27,8 +28,10 @@ import {
   TrendingUp, 
   AlertCircle,
   Activity,
-  FileText
+  FileText,
+  Lock
 } from 'lucide-react';
+import ManageMessages from './ManageMessages';
 
 export default function BarberDashboard() {
   return (
@@ -40,6 +43,7 @@ export default function BarberDashboard() {
           <Route path="/services" element={<ManageServices />} />
           <Route path="/slots" element={<ManageSlots />} />
           <Route path="/bookings" element={<ManageBookings />} />
+          <Route path="/messages" element={<ManageMessages />} />
         </Routes>
       </main>
     </div>
@@ -56,6 +60,7 @@ function BarberHome() {
   });
   const [todaySchedule, setTodaySchedule] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -64,6 +69,10 @@ function BarberHome() {
     const servicesQuery = query(collection(db, 'services'), where('barberId', '==', user.uid));
     const unsubscribeServices = onSnapshot(servicesQuery, (snapshot) => {
       setStats(prev => ({ ...prev, myServices: snapshot.size }));
+    }, (err) => {
+      console.error("Error fetching services:", err);
+      setError("حدث خطأ أثناء جلب البيانات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     // Real-time listener for appointments (bookings) of this barber
@@ -100,6 +109,10 @@ function BarberHome() {
       }));
       setTodaySchedule(todayList);
       setLoading(false);
+    }, (err) => {
+      console.error("Error fetching appointments:", err);
+      setError("حدث خطأ أثناء جلب البيانات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     return () => {
@@ -107,6 +120,19 @@ function BarberHome() {
       unsubscribeAppointments();
     };
   }, [user]);
+
+  if (error) {
+    return (
+      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <h4 className="font-bold text-red-400 mb-1">فشل تحميل البيانات</h4>
+          <p>{error}</p>
+          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ services و appointments في قواعد حماية Firestore.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -197,6 +223,7 @@ function ManageServices() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState('');
+  const [fetchError, setFetchError] = useState(null);
   const [submitLoading, setSubmitLoading] = useState(false);
 
   // Form Fields
@@ -215,6 +242,10 @@ function ManageServices() {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setServices(list);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching services:", err);
+      setFetchError("حدث خطأ أثناء تحميل الخدمات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
       setLoading(false);
     });
 
@@ -262,6 +293,19 @@ function ManageServices() {
       }
     }
   };
+
+  if (fetchError) {
+    return (
+      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <h4 className="font-bold text-red-400 mb-1">فشل تحميل الخدمات</h4>
+          <p>{fetchError}</p>
+          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ services في قواعد حماية Firestore.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -435,11 +479,15 @@ function ManageSlots() {
   const { user } = useAuth();
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // Form Fields
   const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [startTime, setStartTime] = useState('10:00');
+  const [endTime, setEndTime] = useState('22:00');
+  const [duration, setDuration] = useState('30');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -459,42 +507,70 @@ function ManageSlots() {
       list.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
       setSlots(list);
       setLoading(false);
+    }, (err) => {
+      console.error("Error fetching slots:", err);
+      setFetchError("حدث خطأ أثناء تحميل مواعيد الحجوزات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  const handleGenerateSlot = async (e) => {
+  const handleGenerateSlots = async (e) => {
     e.preventDefault();
-    if (!date || !time) {
-      setError('الرجاء اختيار التاريخ والوقت');
+    if (!date || !startTime || !endTime || !duration) {
+      setError('الرجاء تعبئة جميع الحقول');
       return;
     }
 
     try {
       setError('');
-      const dateTimeStr = `${date}T${time}:00`;
+      setSuccessMsg('');
+      const barberDoc = await getDoc(doc(db, 'users', user.uid));
+      const barberData = barberDoc.exists() ? barberDoc.data() : {};
 
-      // Check if slot already exists in state
-      const duplicate = slots.some(slot => slot.dateTime === dateTimeStr);
-      if (duplicate) {
-        setError('هذا الموعد مضاف بالفعل');
+      const startSplit = startTime.split(':');
+      const endSplit = endTime.split(':');
+      let startMins = parseInt(startSplit[0]) * 60 + parseInt(startSplit[1]);
+      let endMins = parseInt(endSplit[0]) * 60 + parseInt(endSplit[1]);
+      const dur = parseInt(duration);
+
+      if (endMins <= startMins) {
+        setError('وقت الانتهاء يجب أن يكون بعد وقت البدء');
         return;
       }
 
-      await addDoc(collection(db, 'appointments'), {
-        barberId: user.uid,
-        dateTime: dateTimeStr,
-        status: 'available',
-        customerName: '',
-        customerPhone: '',
-        price: 0,
-        createdAt: new Date().toISOString(),
-      });
+      let addedCount = 0;
+      let dupCount = 0;
 
-      setTime('');
+      for (let m = startMins; m < endMins; m += dur) {
+        const h = Math.floor(m / 60).toString().padStart(2, '0');
+        const mins = (m % 60).toString().padStart(2, '0');
+        const dateTimeStr = `${date}T${h}:${mins}:00`;
+
+        const duplicate = slots.some(slot => slot.dateTime === dateTimeStr);
+        if (duplicate) {
+          dupCount++;
+          continue;
+        }
+
+        await addDoc(collection(db, 'appointments'), {
+          barberId: user.uid,
+          barberName: barberData.name || user.email || '',
+          barberAddress: barberData.address || '',
+          dateTime: dateTimeStr,
+          status: 'available',
+          customerName: '',
+          customerPhone: '',
+          price: 0,
+          createdAt: new Date().toISOString(),
+        });
+        addedCount++;
+      }
+
+      setSuccessMsg(`تم إضافة ${addedCount} موعد بنجاح! ${dupCount > 0 ? `(تم تجاهل ${dupCount} موعد مضاف مسبقاً)` : ''}`);
     } catch (err) {
-      setError('حدث خطأ أثناء إضافة الموعد: ' + err.message);
+      setError('حدث خطأ أثناء الإضافة: ' + err.message);
     }
   };
 
@@ -507,6 +583,45 @@ function ManageSlots() {
       }
     }
   };
+
+  const handleCloseSlot = async (slotId) => {
+    const customerName = window.prompt('أدخل اسم العميل للحجز اليدوي (اختياري - اتركه فارغاً للإغلاق فقط):');
+    if (customerName === null) return;
+
+    try {
+      if (customerName.trim()) {
+        await updateDoc(doc(db, 'appointments', slotId), {
+          status: 'booked',
+          customerName: customerName.trim(),
+          customerPhone: 'حجز يدوي',
+          serviceName: 'حجز يدوي من الداش بورد',
+          price: 0,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await updateDoc(doc(db, 'appointments', slotId), {
+          status: 'cancelled',
+          customerName: 'ملغي (مغلق من الصالون)',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      alert('خطأ أثناء إغلاق الموعد: ' + err.message);
+    }
+  };
+
+  if (fetchError) {
+    return (
+      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <h4 className="font-bold text-red-400 mb-1">فشل تحميل مواعيد الحجوزات</h4>
+          <p>{fetchError}</p>
+          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ appointments في قواعد حماية Firestore.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -536,7 +651,14 @@ function ManageSlots() {
             </div>
           )}
 
-          <form onSubmit={handleGenerateSlot} className="space-y-5">
+          {successMsg && (
+            <div className="mb-4 p-3 rounded-lg bg-green-950/20 border border-green-900/40 text-green-200 text-xs flex items-start gap-2">
+              <CheckCircle className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleGenerateSlots} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-charcoal-300 mb-2">التاريخ *</label>
               <input
@@ -545,27 +667,54 @@ function ManageSlots() {
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-charcoal-300 mb-2">من الساعة *</label>
+                <input
+                  type="time"
+                  required
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-charcoal-300 mb-2">إلى الساعة *</label>
+                <input
+                  type="time"
+                  required
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs font-semibold text-charcoal-300 mb-2">الوقت *</label>
-              <input
-                type="time"
-                required
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-              />
+              <label className="block text-xs font-semibold text-charcoal-300 mb-2">مدة كل حجز (بالدقائق) *</label>
+              <select
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 text-right appearance-none"
+              >
+                <option value="15">15 دقيقة</option>
+                <option value="30">30 دقيقة</option>
+                <option value="45">45 دقيقة</option>
+                <option value="60">ساعة (60 دقيقة)</option>
+              </select>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-gradient-to-l from-gold-500 to-gold-400 hover:from-gold-600 hover:to-gold-500 text-charcoal-950 font-bold rounded-xl transition-all shadow-lg shadow-gold-500/10 flex items-center justify-center gap-2"
+              className="w-full py-3.5 mt-2 bg-gradient-to-l from-gold-500 to-gold-400 hover:from-gold-600 hover:to-gold-500 text-charcoal-950 font-bold rounded-xl transition-all shadow-lg shadow-gold-500/10 flex items-center justify-center gap-2"
             >
               <Plus className="w-5 h-5" />
-              <span>إضافة الموعد</span>
+              <span>توليد المواعيد</span>
             </button>
           </form>
         </div>
@@ -584,13 +733,22 @@ function ManageSlots() {
                       <div className="text-sm font-bold text-white font-inter">{d}</div>
                       <div className="text-xs text-gold-400 font-semibold font-inter mt-1">{t.substring(0, 5)}</div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-2 rounded-lg bg-charcoal-950 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
-                      title="إزالة الموعد"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleCloseSlot(slot.id)}
+                        className="p-2 rounded-lg bg-charcoal-950 hover:bg-gold-500/20 text-charcoal-400 hover:text-gold-400 border border-charcoal-800 hover:border-gold-500/30 transition-all"
+                        title="إغلاق الموعد / حجز يدوي"
+                      >
+                        <Lock className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        className="p-2 rounded-lg bg-charcoal-950 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
+                        title="إزالة الموعد"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -612,6 +770,7 @@ function ManageBookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -633,6 +792,10 @@ function ManageBookings() {
       list.sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
       setBookings(list);
       setLoading(false);
+    }, (err) => {
+      console.error("Error fetching bookings:", err);
+      setFetchError("حدث خطأ أثناء تحميل الحجوزات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -648,6 +811,19 @@ function ManageBookings() {
       alert('حدث خطأ أثناء تعديل حالة الحجز: ' + err.message);
     }
   };
+
+  if (fetchError) {
+    return (
+      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <h4 className="font-bold text-red-400 mb-1">فشل تحميل الحجوزات</h4>
+          <p>{fetchError}</p>
+          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ appointments في قواعد حماية Firestore.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

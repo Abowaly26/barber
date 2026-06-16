@@ -2,6 +2,16 @@
 
 import 'package:flutter/material.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+// Global state holder for the wizard booking session
+class BookingSession {
+  static Map<String, dynamic>? selectedBarber;
+  static Map<String, dynamic>? selectedService;
+  static Map<String, dynamic>? selectedSlot;
+}
 
 class HomeServiceScreen extends StatelessWidget {
   const HomeServiceScreen({super.key});
@@ -422,11 +432,75 @@ class HomeServiceScreen extends StatelessWidget {
   }
 }
 
-class ServiceDetailsScreen extends StatelessWidget {
+class ServiceDetailsScreen extends StatefulWidget {
   const ServiceDetailsScreen({super.key});
 
   @override
+  State<ServiceDetailsScreen> createState() => _ServiceDetailsScreenState();
+}
+
+class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
+  List<Map<String, dynamic>> _services = [];
+  Map<String, dynamic>? _selectedService;
+  bool _isLoadingServices = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadServices();
+  }
+
+  Future<void> _loadServices() async {
+    final barberId = BookingSession.selectedBarber?['id'];
+    if (barberId == null) {
+      setState(() => _isLoadingServices = false);
+      return;
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('services')
+          .where('barberId', isEqualTo: barberId)
+          .get();
+
+      final services = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      setState(() {
+        _services = services;
+        final previousServiceId = BookingSession.selectedService?['id'];
+        _selectedService = services.cast<Map<String, dynamic>?>().firstWhere(
+          (service) => service?['id'] == previousServiceId,
+          orElse: () => services.isNotEmpty ? services.first : null,
+        );
+        BookingSession.selectedService = _selectedService;
+        _isLoadingServices = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading services: $e');
+      setState(() => _isLoadingServices = false);
+    }
+  }
+
+  String get _serviceName => _selectedService?['name'] ?? 'Classic Haircut';
+  num get _servicePrice => (_selectedService?['price'] is num)
+      ? _selectedService!['price'] as num
+      : 45;
+  num get _serviceDuration => (_selectedService?['duration'] is num)
+      ? _selectedService!['duration'] as num
+      : 45;
+  num get _homeVisitFee => 10;
+  num get _totalPrice => _servicePrice + _homeVisitFee;
+
+  @override
   Widget build(BuildContext context) {
+    final barberName = BookingSession.selectedBarber?['name'] ?? 'James Wilson';
+    final barberSpecialty =
+        BookingSession.selectedBarber?['specialty'] ?? 'Senior Barber';
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -452,11 +526,11 @@ class ServiceDetailsScreen extends StatelessWidget {
                 color: const Color(0xFF336C6D),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Row(
+                  const Row(
                     children: [
                       Icon(Icons.home_outlined, color: Colors.white, size: 16),
                       SizedBox(width: 8),
@@ -468,8 +542,8 @@ class ServiceDetailsScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Classic Haircut',
-                    style: TextStyle(
+                    _serviceName,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -483,14 +557,18 @@ class ServiceDetailsScreen extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _buildInfoBox(Icons.access_time, 'Duration', '45 min'),
+                  child: _buildInfoBox(
+                    Icons.access_time,
+                    'Duration',
+                    '$_serviceDuration min',
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildInfoBox(
                     Icons.attach_money,
                     'Service Price',
-                    '\$45',
+                    '${_servicePrice.toStringAsFixed(0)} ج.م',
                   ),
                 ),
               ],
@@ -498,13 +576,103 @@ class ServiceDetailsScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             const Text(
+              'Choose Service',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            _isLoadingServices
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  )
+                : _services.isEmpty
+                ? const Text(
+                    'This barber has no services yet.',
+                    style: TextStyle(color: AppColors.textGrey),
+                  )
+                : Column(
+                    children: _services.map((service) {
+                      final selected = _selectedService?['id'] == service['id'];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedService = service;
+                            BookingSession.selectedService = service;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppColors.primaryLight
+                                : Colors.white,
+                            border: Border.all(
+                              color: selected
+                                  ? AppColors.primary
+                                  : AppColors.borderGrey,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: selected
+                                    ? AppColors.primary
+                                    : AppColors.textGrey,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      service['name'] ?? 'Service',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${service['duration'] ?? 30} min',
+                                      style: const TextStyle(
+                                        color: AppColors.textGrey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '${service['price'] ?? 0} ج.م',
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+            const SizedBox(height: 24),
+
+            const Text(
               'About This Service',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Professional haircut at your doorstep. Includes consultation, wash, cut and style.',
-              style: TextStyle(color: AppColors.textGrey, height: 1.5),
+            Text(
+              _selectedService?['description'] ??
+                  'Professional haircut at your doorstep. Includes consultation, wash, cut and style.',
+              style: const TextStyle(color: AppColors.textGrey, height: 1.5),
             ),
             const SizedBox(height: 24),
 
@@ -579,28 +747,33 @@ class ServiceDetailsScreen extends StatelessWidget {
                     child: Icon(Icons.person, color: AppColors.textGrey),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'James Wilson',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          barberName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          'Senior Barber · ETA 15 min',
-                          style: TextStyle(
+                          '$barberSpecialty · ETA 15 min',
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textGrey,
                           ),
                         ),
                         Row(
                           children: [
-                            Icon(Icons.star, color: Colors.amber, size: 14),
-                            SizedBox(width: 4),
+                            const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
                             Text(
-                              '4.9',
-                              style: TextStyle(
+                              (BookingSession.selectedBarber?['rating'] ?? 4.9)
+                                  .toString(),
+                              style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -640,22 +813,35 @@ class ServiceDetailsScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Total', style: TextStyle(color: AppColors.textGrey)),
+                  const Text(
+                    'Total',
+                    style: TextStyle(color: AppColors.textGrey),
+                  ),
                   Text(
-                    '\$55',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    '${_totalPrice.toStringAsFixed(0)} ج.م',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
               ElevatedButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DateTimeScreen()),
-                ),
+                onPressed: _selectedService == null
+                    ? null
+                    : () {
+                        BookingSession.selectedService = _selectedService;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DateTimeScreen(),
+                          ),
+                        );
+                      },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(
@@ -726,11 +912,130 @@ class ServiceDetailsScreen extends StatelessWidget {
   }
 }
 
-class DateTimeScreen extends StatelessWidget {
+class DateTimeScreen extends StatefulWidget {
   const DateTimeScreen({super.key});
 
   @override
+  State<DateTimeScreen> createState() => _DateTimeScreenState();
+}
+
+class _DateTimeScreenState extends State<DateTimeScreen> {
+  List<Map<String, dynamic>> _slots = [];
+  bool _isLoading = true;
+  String? _selectedDate; // "YYYY-MM-DD"
+  Map<String, dynamic>? _selectedSlot;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSlots();
+  }
+
+  Future<void> _loadSlots() async {
+    try {
+      final barberId = BookingSession.selectedBarber?['id'] ?? '';
+      final snapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('barberId', isEqualTo: barberId)
+          .where('status', isEqualTo: 'available')
+          .get();
+
+      List<Map<String, dynamic>> list = [];
+      for (var doc in snapshot.docs) {
+        var data = doc.data();
+        data['id'] = doc.id;
+        list.add(data);
+      }
+
+      // Sort slots by dateTime
+      list.sort((a, b) => (a['dateTime'] ?? '').compareTo(b['dateTime'] ?? ''));
+
+      setState(() {
+        _slots = list;
+        _isLoading = false;
+        if (_slots.isNotEmpty) {
+          // Default to first date
+          final firstSlotDate = _slots.first['dateTime']?.split('T')[0];
+          _selectedDate = firstSlotDate;
+        }
+      });
+    } catch (e) {
+      debugPrint("Error loading slots: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Helper to extract unique dates
+  List<String> _getUniqueDates() {
+    final dates = <String>{};
+    for (var slot in _slots) {
+      final datePart = slot['dateTime']?.split('T')[0];
+      if (datePart != null) {
+        dates.add(datePart);
+      }
+    }
+    return dates.toList()..sort();
+  }
+
+  // Helper to get time slots for the selected date
+  List<Map<String, dynamic>> _getTimeSlotsForSelectedDate() {
+    if (_selectedDate == null) return [];
+    return _slots
+        .where((slot) => slot['dateTime']?.startsWith(_selectedDate!) ?? false)
+        .toList();
+  }
+
+  String _getDayName(DateTime date) {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return days[date.weekday % 7];
+  }
+
+  String _getMonthName(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[date.month - 1];
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final uniqueDates = _getUniqueDates();
+    final timeSlots = _getTimeSlotsForSelectedDate();
+    final barberName = BookingSession.selectedBarber?['name'] ?? 'James Wilson';
+    final serviceName =
+        BookingSession.selectedService?['name'] ?? 'Classic Haircut';
+    final servicePrice = (BookingSession.selectedService?['price'] is num)
+        ? BookingSession.selectedService!['price'] as num
+        : 45;
+    final serviceDuration = (BookingSession.selectedService?['duration'] is num)
+        ? BookingSession.selectedService!['duration'] as num
+        : 45;
+    final totalPrice = servicePrice + 10;
+
+    String displayDate = 'Not selected';
+    String displayTime = 'Not selected';
+    if (_selectedSlot != null) {
+      try {
+        DateTime dt = DateTime.parse(_selectedSlot!['dateTime']);
+        displayDate = "${_getMonthName(dt)} ${dt.day}, ${dt.year}";
+        displayTime =
+            _selectedSlot!['dateTime']?.split('T')[1].substring(0, 5) ?? '';
+      } catch (_) {}
+    }
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -740,128 +1045,184 @@ class DateTimeScreen extends StatelessWidget {
         title: const Text('Book Home Visit'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Classic Haircut',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              serviceName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'with $barberName · At Home',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textGrey,
+                              ),
+                            ),
+                          ],
                         ),
+                        Text(
+                          '${totalPrice.toStringAsFixed(0)} ج.م',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 18,
+                        color: AppColors.textDark,
                       ),
-                      SizedBox(height: 4),
+                      SizedBox(width: 8),
                       Text(
-                        'with James Wilson · At Home',
+                        'Select Date',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textGrey,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
-                  Text(
-                    '\$55',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: AppColors.primary,
-                    ),
+                  const SizedBox(height: 16),
+                  uniqueDates.isNotEmpty
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: uniqueDates.map((dateStr) {
+                              DateTime dt = DateTime.parse(dateStr);
+                              bool isSelected = _selectedDate == dateStr;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedDate = dateStr;
+                                    _selectedSlot =
+                                        null; // Reset slot on date change
+                                  });
+                                },
+                                child: _buildDateChip(
+                                  _getDayName(dt),
+                                  dt.day.toString(),
+                                  _getMonthName(dt),
+                                  isSelected,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        )
+                      : const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'No available dates for this barber',
+                            style: TextStyle(color: AppColors.textGrey),
+                          ),
+                        ),
+                  const SizedBox(height: 32),
+
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 18,
+                        color: AppColors.textDark,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Select Time',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
+                  timeSlots.isNotEmpty
+                      ? Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: timeSlots.map((slot) {
+                            final timeStr =
+                                slot['dateTime']
+                                    ?.split('T')[1]
+                                    .substring(0, 5) ??
+                                '';
+                            bool isSelected =
+                                _selectedSlot?['id'] == slot['id'];
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedSlot = slot;
+                                });
+                              },
+                              child: _buildTimeChip(timeStr, isSelected),
+                            );
+                          }).toList(),
+                        )
+                      : const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text(
+                            'Select a date to view available times',
+                            style: TextStyle(color: AppColors.textGrey),
+                          ),
+                        ),
+                  const SizedBox(height: 32),
+
+                  const Text(
+                    'Booking Summary',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSummaryRow('Service', serviceName),
+                  _buildSummaryRow('Type', 'At-Home Visit'),
+                  _buildSummaryRow('Specialist', barberName),
+                  _buildSummaryRow('Date', displayDate),
+                  _buildSummaryRow('Time', displayTime),
+                  _buildSummaryRow('Duration', '$serviceDuration min'),
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-
-            const Row(
-              children: [
-                Icon(Icons.calendar_today, size: 18, color: AppColors.textDark),
-                SizedBox(width: 8),
-                Text(
-                  'Select Date',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildDateChip('Wed', '11', 'Mar', false),
-                  _buildDateChip('Thu', '12', 'Mar', true),
-                  _buildDateChip('Fri', '13', 'Mar', false),
-                  _buildDateChip('Sat', '14', 'Mar', false),
-                  _buildDateChip('Sun', '15', 'Mar', false),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            const Row(
-              children: [
-                Icon(Icons.access_time, size: 18, color: AppColors.textDark),
-                SizedBox(width: 8),
-                Text(
-                  'Select Time',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _buildTimeChip('09:00 AM', false),
-                _buildTimeChip('09:30 AM', false),
-                _buildTimeChip('10:00 AM', true),
-                _buildTimeChip('10:30 AM', false),
-                _buildTimeChip('11:00 AM', false),
-                _buildTimeChip('11:30 AM', false),
-                _buildTimeChip('12:00 PM', false),
-                _buildTimeChip('12:30 PM', false),
-                _buildTimeChip('01:00 PM', false),
-                _buildTimeChip('01:30 PM', false),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            const Text(
-              'Booking Summary',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildSummaryRow('Service', 'Classic Haircut'),
-            _buildSummaryRow('Type', 'At-Home Visit'),
-            _buildSummaryRow('Specialist', 'James Wilson'),
-            _buildSummaryRow('Date', 'Mar 12, 2026'),
-            _buildSummaryRow('Time', '10:00 AM'),
-            _buildSummaryRow('Duration', '45 min'),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
       bottomSheet: PrimaryBottomButton(
         text: 'Continue — Set Address',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const AddressScreen()),
-        ),
+        onPressed: _selectedSlot == null
+            ? null // Disable button if slot is not selected
+            : () {
+                BookingSession.selectedSlot = _selectedSlot;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddressScreen()),
+                );
+              },
       ),
     );
   }
@@ -1183,8 +1544,144 @@ class AddressScreen extends StatelessWidget {
   }
 }
 
-class ConfirmScreen extends StatelessWidget {
+class ConfirmScreen extends StatefulWidget {
   const ConfirmScreen({super.key});
+
+  @override
+  State<ConfirmScreen> createState() => _ConfirmScreenState();
+}
+
+class _ConfirmScreenState extends State<ConfirmScreen> {
+  bool _isSubmitting = false;
+
+  String get _serviceName =>
+      BookingSession.selectedService?['name'] ?? 'Classic Haircut';
+  String get _barberName =>
+      BookingSession.selectedBarber?['name'] ?? 'James Wilson';
+  String get _barberSpecialty =>
+      BookingSession.selectedBarber?['specialty'] ?? 'Senior Barber';
+  num get _servicePrice => (BookingSession.selectedService?['price'] is num)
+      ? BookingSession.selectedService!['price'] as num
+      : 45;
+  num get _homeVisitFee => 10;
+  num get _tax => 0;
+  num get _totalPrice => _servicePrice + _homeVisitFee + _tax;
+  String get _dateTime => BookingSession.selectedSlot?['dateTime'] ?? '';
+
+  DateTime? get _parsedDateTime {
+    try {
+      return DateTime.parse(_dateTime);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatDate() {
+    final date = _parsedDateTime;
+    if (date == null) return 'Not selected';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _formatTime() {
+    final date = _parsedDateTime;
+    if (date == null) return 'Not selected';
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  Future<void> _confirmBooking() async {
+    final barber = BookingSession.selectedBarber;
+    final service = BookingSession.selectedService;
+    final slot = BookingSession.selectedSlot;
+    final slotId = slot?['id'];
+
+    if (barber == null || service == null || slotId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a barber, service, and time first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      Map<String, dynamic> customerData = {};
+      if (user != null) {
+        final customerDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        customerData = customerDoc.data() ?? {};
+      }
+
+      final slotRef = FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(slotId);
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final freshSlot = await transaction.get(slotRef);
+        if (!freshSlot.exists || freshSlot.data()?['status'] != 'available') {
+          throw StateError('This time slot is no longer available.');
+        }
+
+        transaction.update(slotRef, {
+          'status': 'booked',
+          'barberId': barber['id'],
+          'barberName': barber['name'] ?? '',
+          'barberAddress': barber['address'] ?? '',
+          'customerId': user?.uid ?? '',
+          'customerName':
+              customerData['name'] ?? user?.displayName ?? 'Mobile customer',
+          'customerPhone':
+              customerData['phoneNumber'] ??
+              customerData['phone'] ??
+              user?.phoneNumber ??
+              '',
+          'serviceId': service['id'] ?? '',
+          'serviceName': _serviceName,
+          'serviceDuration': service['duration'] ?? 45,
+          'price': _totalPrice,
+          'paymentMethod': 'card',
+          'serviceType': 'home',
+          'addressLabel': 'Home',
+          'address': '123 Main Street, Suite 101',
+          'bookedAt': DateTime.now().toIso8601String(),
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      });
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => SuccessScreen(bookingId: slotId)),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1213,56 +1710,62 @@ class ConfirmScreen extends StatelessWidget {
                 border: Border.all(color: AppColors.borderGrey),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Column(
+              child: Column(
                 children: [
                   Text(
-                    'Classic Haircut',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    _serviceName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'James Wilson · Senior Barber',
-                    style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                    '$_barberName · $_barberSpecialty',
+                    style: const TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 13,
+                    ),
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.calendar_today,
                         size: 14,
                         color: AppColors.textGrey,
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Text(
-                        'Mar 12, 2026',
-                        style: TextStyle(
+                        _formatDate(),
+                        style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textGrey,
                         ),
                       ),
-                      SizedBox(width: 16),
-                      Icon(
+                      const SizedBox(width: 16),
+                      const Icon(
                         Icons.access_time,
                         size: 14,
                         color: AppColors.textGrey,
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Text(
-                        '10:00 AM',
-                        style: TextStyle(
+                        _formatTime(),
+                        style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textGrey,
                         ),
                       ),
-                      SizedBox(width: 16),
-                      Icon(
+                      const SizedBox(width: 16),
+                      const Icon(
                         Icons.home_outlined,
                         size: 14,
                         color: AppColors.textGrey,
                       ),
-                      SizedBox(width: 4),
-                      Text(
+                      const SizedBox(width: 4),
+                      const Text(
                         'At Home',
                         style: TextStyle(
                           fontSize: 12,
@@ -1376,27 +1879,33 @@ class ConfirmScreen extends StatelessWidget {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            _buildPriceRow('Classic Haircut', '\$45.00'),
-            _buildPriceRow('Home Visit Fee', '\$10.00'),
-            _buildPriceRow('Tax', '\$4.40'),
+            _buildPriceRow(
+              _serviceName,
+              '${_servicePrice.toStringAsFixed(0)} ج.م',
+            ),
+            _buildPriceRow(
+              'Home Visit Fee',
+              '${_homeVisitFee.toStringAsFixed(0)} ج.م',
+            ),
+            _buildPriceRow('Tax', '${_tax.toStringAsFixed(0)} ج.م'),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12.0),
               child: Divider(),
             ),
-            _buildPriceRow('Total', '\$59.40', isTotal: true),
+            _buildPriceRow(
+              'Total',
+              '${_totalPrice.toStringAsFixed(0)} ج.م',
+              isTotal: true,
+            ),
 
             const SizedBox(height: 100),
           ],
         ),
       ),
       bottomSheet: PrimaryBottomButton(
-        text: 'Confirm & Pay',
-        price: '\$59.40',
-        onPressed: () => Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const SuccessScreen()),
-          (route) => false,
-        ),
+        text: _isSubmitting ? 'Confirming...' : 'Confirm & Pay',
+        price: '${_totalPrice.toStringAsFixed(0)} ج.م',
+        onPressed: _isSubmitting ? null : _confirmBooking,
       ),
     );
   }
@@ -1430,7 +1939,46 @@ class ConfirmScreen extends StatelessWidget {
 }
 
 class SuccessScreen extends StatelessWidget {
-  const SuccessScreen({super.key});
+  final String bookingId;
+
+  const SuccessScreen({super.key, required this.bookingId});
+
+  String get _serviceName =>
+      BookingSession.selectedService?['name'] ?? 'Classic Haircut';
+  String get _barberName =>
+      BookingSession.selectedBarber?['name'] ?? 'James Wilson';
+  num get _servicePrice => (BookingSession.selectedService?['price'] is num)
+      ? BookingSession.selectedService!['price'] as num
+      : 45;
+  num get _totalPrice => _servicePrice + 10;
+
+  String _formatDateTime() {
+    final dateTime = BookingSession.selectedSlot?['dateTime'];
+    if (dateTime == null) return 'Not selected';
+    try {
+      final date = DateTime.parse(dateTime);
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+      final minute = date.minute.toString().padLeft(2, '0');
+      final period = date.hour >= 12 ? 'PM' : 'AM';
+      return '${months[date.month - 1]} ${date.day}, $hour:$minute $period';
+    } catch (_) {
+      return dateTime.toString();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1494,22 +2042,22 @@ class SuccessScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          _buildDetailRow('Booking ID', 'HSB-2026-0312'),
-                          _buildDetailRow('Service', 'Classic Haircut'),
+                          _buildDetailRow('Booking ID', bookingId),
+                          _buildDetailRow('Service', _serviceName),
                           _buildDetailRow(
                             'Date & Time',
-                            'Mar 12, 10:00 AM',
+                            _formatDateTime(),
                             isBoldValue: true,
                           ),
                           _buildDetailRow(
                             'Specialist',
-                            'James Wilson',
+                            _barberName,
                             isBoldValue: true,
                           ),
                           const Divider(height: 24),
                           _buildDetailRow(
                             'Total Paid',
-                            '\$59.40',
+                            '${_totalPrice.toStringAsFixed(0)} ج.م',
                             isBoldValue: true,
                             valueColor: AppColors.primary,
                           ),
@@ -1631,11 +2179,120 @@ class SuccessScreen extends StatelessWidget {
 // NEW SCREENS FOR MEN'S FLOW (Specialists, Tracking)
 // ==========================================
 
-class HomeSpecialistsScreen extends StatelessWidget {
+class HomeSpecialistsScreen extends StatefulWidget {
   const HomeSpecialistsScreen({super.key});
 
   @override
+  State<HomeSpecialistsScreen> createState() => _HomeSpecialistsScreenState();
+}
+
+class _HomeSpecialistsScreenState extends State<HomeSpecialistsScreen> {
+  Position? _currentPosition;
+  List<Map<String, dynamic>> _barbers = [];
+  bool _isLoading = true;
+  String _searchQuery = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocationAndBarbers();
+  }
+
+  Future<void> _loadLocationAndBarbers() async {
+    try {
+      // 1. Get Location
+      Position? position;
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always) {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.low,
+            timeLimit: const Duration(seconds: 5),
+          );
+        }
+      } catch (e) {
+        debugPrint("Location error: $e");
+      }
+
+      setState(() {
+        _currentPosition =
+            position ??
+            Position(
+              latitude: 30.0444,
+              longitude: 31.2357,
+              timestamp: DateTime.now(),
+              accuracy: 0,
+              altitude: 0,
+              altitudeAccuracy: 0,
+              heading: 0,
+              headingAccuracy: 0,
+              speed: 0,
+              speedAccuracy: 0,
+            );
+      });
+
+      // 2. Fetch Barbers from Firestore
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'barber')
+          .get();
+
+      List<Map<String, dynamic>> list = [];
+      for (var doc in snapshot.docs) {
+        var data = doc.data();
+        data['id'] = doc.id;
+
+        // Calculate distance if coordinates exist
+        double barberLat = (data['latitude'] is num)
+            ? (data['latitude'] as num).toDouble()
+            : 30.0444;
+        double barberLng = (data['longitude'] is num)
+            ? (data['longitude'] as num).toDouble()
+            : 31.2357;
+
+        double distanceInMeters = Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          barberLat,
+          barberLng,
+        );
+
+        data['distanceKm'] = distanceInMeters / 1000.0;
+        list.add(data);
+      }
+
+      // Sort by distance (closest first)
+      list.sort(
+        (a, b) =>
+            (a['distanceKm'] as double).compareTo(b['distanceKm'] as double),
+      );
+
+      setState(() {
+        _barbers = list;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error loading barbers: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Filter barbers by search query
+    final filteredBarbers = _barbers.where((barber) {
+      final name = (barber['name'] ?? "").toString().toLowerCase();
+      final specialty = (barber['specialty'] ?? "").toString().toLowerCase();
+      return name.contains(_searchQuery.toLowerCase()) ||
+          specialty.contains(_searchQuery.toLowerCase());
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1645,103 +2302,94 @@ class HomeSpecialistsScreen extends StatelessWidget {
         title: const Text('Home Specialists'),
         centerTitle: true,
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search specialists...',
-                hintStyle: const TextStyle(color: AppColors.textGrey),
-                prefixIcon: const Icon(Icons.search, color: AppColors.textGrey),
-                filled: true,
-                fillColor: AppColors.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.0),
-            child: Text(
-              '5 specialists available near you',
-              style: TextStyle(color: AppColors.textGrey, fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSpecialistListCard(
-                  context,
-                  name: 'James Wilson',
-                  role: 'Senior Barber',
-                  rating: '4.9',
-                  reviews: '412',
-                  distance: '1.5 km',
-                  time: '15 min',
-                  price: 'From \$45',
-                  isAvailable: true,
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: TextField(
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search specialists...',
+                      hintStyle: const TextStyle(color: AppColors.textGrey),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: AppColors.textGrey,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    ),
+                  ),
                 ),
-                _buildSpecialistListCard(
-                  context,
-                  name: 'Robert Kim',
-                  role: 'Hair Stylist',
-                  rating: '4.7',
-                  reviews: '287',
-                  distance: '2.3 km',
-                  time: '20 min',
-                  price: 'From \$40',
-                  isAvailable: true,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: Text(
+                    '${filteredBarbers.length} specialists available near you',
+                    style: const TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-                _buildSpecialistListCard(
-                  context,
-                  name: 'Carlos Mendez',
-                  role: 'Master Barber',
-                  rating: '4.8',
-                  reviews: '356',
-                  distance: '3.1 km',
-                  time: '25 min',
-                  price: 'From \$55',
-                  isAvailable: true,
-                ),
-                _buildSpecialistListCard(
-                  context,
-                  name: 'David Park',
-                  role: 'Hair Colorist',
-                  rating: '4.6',
-                  reviews: '198',
-                  distance: '4.0 km',
-                  time: '30 min',
-                  price: 'From \$50',
-                  isAvailable: true,
-                ),
-                _buildSpecialistListCard(
-                  context,
-                  name: 'Michael Torres',
-                  role: 'Grooming Expert',
-                  rating: '4.8',
-                  reviews: '310',
-                  distance: '2.8 km',
-                  time: '22 min',
-                  price: 'From \$60',
-                  isAvailable: false,
+                const SizedBox(height: 16),
+                Expanded(
+                  child: filteredBarbers.isNotEmpty
+                      ? ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          itemCount: filteredBarbers.length,
+                          itemBuilder: (context, index) {
+                            final barber = filteredBarbers[index];
+                            double rating = (barber['rating'] is num)
+                                ? (barber['rating'] as num).toDouble()
+                                : 4.8;
+                            int reviews = (barber['reviewsCount'] is num)
+                                ? (barber['reviewsCount'] as num).toInt()
+                                : 120;
+                            double distance = barber['distanceKm'] ?? 0.0;
+
+                            return _buildSpecialistListCard(
+                              context,
+                              barber: barber,
+                              name: barber['name'] ?? 'Barber Name',
+                              role: barber['specialty'] ?? 'Senior Barber',
+                              rating: rating.toStringAsFixed(1),
+                              reviews: reviews.toString(),
+                              distance: '${distance.toStringAsFixed(1)} km',
+                              time:
+                                  '${(distance * 10 + 5).toInt()} min', // rough estimate
+                              price: 'From \$45',
+                              isAvailable: true,
+                            );
+                          },
+                        )
+                      : const Center(
+                          child: Text(
+                            'No specialists found',
+                            style: TextStyle(color: AppColors.textGrey),
+                          ),
+                        ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _buildSpecialistListCard(
     BuildContext context, {
+    required Map<String, dynamic> barber,
     required String name,
     required String role,
     required String rating,
@@ -1883,14 +2531,16 @@ class HomeSpecialistsScreen extends StatelessWidget {
                     ),
                     OutlinedButton(
                       onPressed: () {
-                        if (isAvailable) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const ServiceDetailsScreen(),
-                            ),
-                          );
-                        }
+                        // Save to global session
+                        BookingSession.selectedBarber = barber;
+                        BookingSession.selectedService = null;
+                        BookingSession.selectedSlot = null;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ServiceDetailsScreen(),
+                          ),
+                        );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,

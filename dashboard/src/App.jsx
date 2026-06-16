@@ -26,18 +26,19 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
+        const fallbackRole = currentUser.email === 'admin@barber.com' ? 'admin' : 'barber';
         // Fetch user role from Firestore
         try {
           const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
           if (userDoc.exists()) {
-            setRole(userDoc.data().role || 'barber');
+            setRole(userDoc.data().role || fallbackRole);
           } else {
             // Default role fallback
-            setRole('barber');
+            setRole(fallbackRole);
           }
         } catch (error) {
           console.error("Error fetching user role: ", error);
-          setRole('barber');
+          setRole(fallbackRole);
         }
       } else {
         setUser(null);

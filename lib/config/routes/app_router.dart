@@ -5,6 +5,8 @@ import 'package:app/features/auth/presentation/views/sign_up_view.dart';
 import 'package:app/features/category_selection/presentation/views/category_selection_view.dart';
 import 'package:app/features/booking_type/presentation/views/booking_type_view.dart';
 import 'package:app/features/main_shell/presentation/views/main_shell_view.dart';
+import 'package:app/features/available_times/presentation/views/available_times_view.dart';
+import 'package:app/features/chat/presentation/views/chat_room_view.dart';
 
 class AppRouter {
   AppRouter._();
@@ -12,6 +14,13 @@ class AppRouter {
   /// Generate routes for the application
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
+      // Root route - redirect to splash
+      case '/':
+        return MaterialPageRoute(
+          builder: (_) => const SplashView(),
+          settings: settings,
+        );
+
       // Splash Screen
       case SplashView.routeName:
         return MaterialPageRoute(
@@ -59,6 +68,24 @@ class AppRouter {
           settings: settings,
         );
 
+      case AvailableTimesView.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const AvailableTimesView(),
+          settings: settings,
+        );
+
+      case ChatRoomView.routeName:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        return MaterialPageRoute(
+          builder: (_) => ChatRoomView(
+            chatId: args['chatId'],
+            barberId: args['barberId'] ?? '',
+            barberName: args['barberName'] ?? '',
+            slotDetails: args['slotDetails'],
+          ),
+          settings: settings,
+        );
+
       // Default route
       default:
         return MaterialPageRoute(
@@ -69,3 +96,4 @@ class AppRouter {
     }
   }
 }
+

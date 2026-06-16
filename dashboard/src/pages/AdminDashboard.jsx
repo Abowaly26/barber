@@ -71,18 +71,27 @@ function AdminHome() {
   const [recentBookings, setRecentBookings] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     // Real-time listener for users (barbers)
     const barbersQuery = query(collection(db, 'users'), where('role', '==', 'barber'));
     const unsubscribeBarbers = onSnapshot(barbersQuery, (snapshot) => {
       setStats(prev => ({ ...prev, totalBarbers: snapshot.size }));
+    }, (err) => {
+      console.error("Error fetching barbers:", err);
+      setError("حدث خطأ أثناء جلب بيانات الحلاقين: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     // Real-time listener for services
     const servicesQuery = collection(db, 'services');
     const unsubscribeServices = onSnapshot(servicesQuery, (snapshot) => {
       setStats(prev => ({ ...prev, totalServices: snapshot.size }));
+    }, (err) => {
+      console.error("Error fetching services:", err);
+      setError("حدث خطأ أثناء جلب بيانات الخدمات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     // Real-time listener for appointments (bookings)
@@ -94,6 +103,11 @@ function AdminHome() {
 
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+
+        if (data.status === 'available') {
+          return;
+        }
+
         bookingsList.push({ id: docSnap.id, ...data });
 
         // Sum revenue for completed bookings
@@ -117,7 +131,7 @@ function AdminHome() {
       // Set revenue and total count
       setStats(prev => ({
         ...prev,
-        totalBookings: snapshot.size,
+        totalBookings: bookingsList.length,
         totalRevenue: revenue
       }));
 
@@ -128,6 +142,10 @@ function AdminHome() {
         .slice(-7); // Last 7 days with bookings
       setChartData(mappedChart);
       setLoading(false);
+    }, (err) => {
+      console.error("Error fetching appointments:", err);
+      setError("حدث خطأ أثناء جلب بيانات الحجوزات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
+      setLoading(false);
     });
 
     return () => {
@@ -136,6 +154,19 @@ function AdminHome() {
       unsubscribeAppointments();
     };
   }, []);
+
+  if (error) {
+    return (
+      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <h4 className="font-bold text-red-400 mb-1">فشل تحميل بيانات لوحة التحكم</h4>
+          <p>{error}</p>
+          <p className="mt-2 text-xs text-charcoal-400">يرجى التأكد من إضافة صلاحيات القراءة والكتابة لكولكشن الـ users و services و appointments في قواعد حماية Firestore.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -264,6 +295,10 @@ function ManageBarbers() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [specialty, setSpecialty] = useState('');
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState('30.0444');
+  const [longitude, setLongitude] = useState('31.2357');
+  const [rating, setRating] = useState('4.8');
 
   useEffect(() => {
     // Query to fetch barbers
@@ -282,7 +317,7 @@ function ManageBarbers() {
 
   const handleAddBarber = async (e) => {
     e.preventDefault();
-    if (!name || !email || !password || !phone) {
+    if (!name || !email || !password || !phone || !address) {
       setError('الرجاء ملء جميع الحقول المطلوبة');
       return;
     }
@@ -308,8 +343,13 @@ function ManageBarbers() {
         name,
         email,
         phoneNumber: phone,
+        address,
         specialty: specialty || 'حلاقة شعر وذقن',
         role: 'barber',
+        latitude: parseFloat(latitude) || 30.0444,
+        longitude: parseFloat(longitude) || 31.2357,
+        rating: parseFloat(rating) || 4.8,
+        reviewsCount: Math.floor(Math.random() * 150) + 50,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -319,7 +359,11 @@ function ManageBarbers() {
       setEmail('');
       setPassword('');
       setPhone('');
+      setAddress('');
       setSpecialty('');
+      setLatitude('30.0444');
+      setLongitude('31.2357');
+      setRating('4.8');
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
@@ -379,6 +423,7 @@ function ManageBarbers() {
                   <th className="p-5">البريد الإلكتروني</th>
                   <th className="p-5">رقم الهاتف</th>
                   <th className="p-5">التخصص</th>
+                  <th className="p-5">العنوان التفصيلي</th>
                   <th className="p-5 text-left">الإجراءات</th>
                 </tr>
               </thead>
@@ -394,6 +439,7 @@ function ManageBarbers() {
                     <td className="p-5 text-charcoal-300 font-inter">{barber.email}</td>
                     <td className="p-5 text-charcoal-300 font-inter">{barber.phoneNumber || barber.phone || 'غير مسجل'}</td>
                     <td className="p-5 text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</td>
+                    <td className="p-5 text-charcoal-300 max-w-xs leading-relaxed">{barber.address || 'غير مسجل'}</td>
                     <td className="p-5 text-left">
                       <button
                         onClick={() => handleDeleteBarber(barber.id)}
@@ -526,6 +572,64 @@ function ManageBarbers() {
                     <Scissors className="w-4 h-4" />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-charcoal-300 mb-2">العنوان التفصيلي *</label>
+                <textarea
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  rows="3"
+                  placeholder="مثال: 15 شارع التحرير، الدور الثاني، بجوار محطة المترو، الدقي، الجيزة"
+                  className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 leading-relaxed"
+                ></textarea>
+                <p className="mt-2 text-[11px] text-charcoal-500">هذا العنوان سيظهر للعميل داخل تطبيق الهاتف مع المواعيد المتاحة.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-charcoal-300 mb-2">خط العرض (Latitude) *</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    placeholder="30.0444"
+                    className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-charcoal-300 mb-2">خط الطول (Longitude) *</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    placeholder="31.2357"
+                    className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-charcoal-300 mb-2">التقييم الافتراضي *</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="5"
+                  required
+                  value={rating}
+                  onChange={(e) => setRating(e.target.value)}
+                  placeholder="4.8"
+                  className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                  dir="ltr"
+                />
               </div>
 
               <div className="pt-4 flex items-center gap-4">

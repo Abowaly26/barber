@@ -9,7 +9,8 @@ import {
   LogOut,
   UserCheck,
   TrendingUp,
-  Sliders
+  Sliders,
+  MessageSquare
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -25,7 +26,9 @@ export default function Sidebar() {
     { to: '/barber/services', label: 'الخدمات والأسعار', icon: FolderHeart },
     { to: '/barber/slots', label: 'مواعيد الحجوزات', icon: CalendarDays },
     { to: '/barber/bookings', label: 'قائمة الحجوزات', icon: UserCheck },
+    { to: '/barber/messages', label: 'الرسائل والمحادثات', icon: MessageSquare },
   ];
+
 
   const links = role === 'admin' ? adminLinks : barberLinks;
 

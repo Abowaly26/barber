@@ -21,7 +21,11 @@ class CustomBottomNav extends StatelessWidget {
       label: 'Home',
       fallbackIcon: Icons.home_filled,
     ),
-    _NavItem(svgPath: null, label: 'Store', fallbackIcon: Icons.shopping_bag_outlined),
+    _NavItem(
+      svgPath: null,
+      label: 'Store',
+      fallbackIcon: Icons.shopping_bag_outlined,
+    ),
     _NavItem(
       svgPath: 'assets/calendar-favorite-01.svg',
       label: 'Bookings',
@@ -48,6 +52,12 @@ class CustomBottomNav extends StatelessWidget {
       padding: EdgeInsets.only(bottom: bottomPadding),
       decoration: BoxDecoration(
         color: Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: AppColors.borderGrey.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(24.r),
           topRight: Radius.circular(24.r),
