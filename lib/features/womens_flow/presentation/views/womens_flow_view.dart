@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
 import 'package:app/features/mens_flow/presentation/views/mens_flow_view.dart'
     show TrackSpecialistScreen;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 
 class BeautyHomeScreen extends StatelessWidget {
   const BeautyHomeScreen({super.key});
@@ -1390,11 +1392,121 @@ class PackageDetailsScreen extends StatelessWidget {
 // ==========================================
 // NEW: BEAUTY SPECIALISTS SCREEN
 // ==========================================
-class BeautySpecialistsScreen extends StatelessWidget {
+class BeautySpecialistsScreen extends StatefulWidget {
   const BeautySpecialistsScreen({super.key});
 
   @override
+  State<BeautySpecialistsScreen> createState() => _BeautySpecialistsScreenState();
+}
+
+class _BeautySpecialistsScreenState extends State<BeautySpecialistsScreen> {
+  List<Map<String, dynamic>> _barbers = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
+  Position? _currentPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocationAndBarbers();
+  }
+
+  Future<void> _loadLocationAndBarbers() async {
+    try {
+      // 1. Get Location
+      Position? position;
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always) {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.low,
+            timeLimit: const Duration(seconds: 5),
+          );
+        }
+      } catch (e) {
+        debugPrint("Location error: $e");
+      }
+
+      setState(() {
+        _currentPosition =
+            position ??
+            Position(
+              latitude: 30.0444,
+              longitude: 31.2357,
+              timestamp: DateTime.now(),
+              accuracy: 0,
+              altitude: 0,
+              altitudeAccuracy: 0,
+              heading: 0,
+              headingAccuracy: 0,
+              speed: 0,
+              speedAccuracy: 0,
+            );
+      });
+
+      // 2. Fetch Barbers from Firestore (women and unisex)
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'barber')
+          .where('barberType', whereIn: ['women', 'unisex'])
+          .get();
+
+      List<Map<String, dynamic>> list = [];
+      for (var doc in snapshot.docs) {
+        var data = doc.data();
+        data['id'] = doc.id;
+
+        // Calculate distance if coordinates exist
+        double barberLat = (data['latitude'] is num)
+            ? (data['latitude'] as num).toDouble()
+            : 30.0444;
+        double barberLng = (data['longitude'] is num)
+            ? (data['longitude'] as num).toDouble()
+            : 31.2357;
+
+        double distanceInMeters = Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          barberLat,
+          barberLng,
+        );
+
+        data['distanceKm'] = distanceInMeters / 1000.0;
+        list.add(data);
+      }
+
+      // Sort by distance (closest first)
+      list.sort(
+        (a, b) =>
+            (a['distanceKm'] as double).compareTo(b['distanceKm'] as double),
+      );
+
+      setState(() {
+        _barbers = list;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error loading barbers: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Filter barbers by search query
+    final filteredBarbers = _barbers.where((barber) {
+      final name = (barber['name'] ?? "").toString().toLowerCase();
+      final specialty = (barber['specialty'] ?? "").toString().toLowerCase();
+      return name.contains(_searchQuery.toLowerCase()) ||
+          specialty.contains(_searchQuery.toLowerCase());
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1404,67 +1516,92 @@ class BeautySpecialistsScreen extends StatelessWidget {
         title: const Text('Beauty Specialists'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          children: [
-            _buildSpecialistFullCard(
-              context,
-              name: 'Sarah Johnson',
-              role: 'Hair Stylist · 8 years',
-              rating: '4.9',
-              reviews: '356',
-              price: 'From \$45',
-              isAvailable: true,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : Column(
+              children: [
+                // Search bar
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search specialists...',
+                      hintStyle: const TextStyle(color: AppColors.textGrey),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: AppColors.textGrey,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                  ),
+                ),
+                // Barbers list
+                Expanded(
+                  child: filteredBarbers.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.person_search,
+                                size: 64,
+                                color: AppColors.textGrey.withOpacity(0.3),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isEmpty
+                                    ? 'No specialists found'
+                                    : 'No specialists match your search',
+                                style: const TextStyle(
+                                  color: AppColors.textGrey,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: filteredBarbers.length,
+                          itemBuilder: (context, index) {
+                            final barber = filteredBarbers[index];
+                            return _buildSpecialistFullCard(
+                              context,
+                              name: barber['name'] ?? 'Unknown',
+                              role: '${barber['specialty'] ?? 'Beauty Specialist'}',
+                              rating: (barber['rating'] ?? 4.5).toString(),
+                              reviews: (barber['reviewsCount'] ?? 0).toString(),
+                              price: 'From \$${((barber['rating'] ?? 4.5) * 10).toInt()}',
+                              isAvailable: true,
+                              distance: '${(barber['distanceKm'] as double).toStringAsFixed(1)} km',
+                              onTap: () {
+                                // Navigate to booking with selected barber
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SalonDetailScreen(),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
-            _buildSpecialistFullCard(
-              context,
-              name: 'Emily Chen',
-              role: 'Makeup Artist · 6 years',
-              rating: '4.8',
-              reviews: '189',
-              price: 'From \$55',
-              isAvailable: true,
-            ),
-            _buildSpecialistFullCard(
-              context,
-              name: 'Maria Garcia',
-              role: 'Nail Technician · 5 years',
-              rating: '4.7',
-              reviews: '142',
-              price: 'From \$35',
-              isAvailable: false,
-            ),
-            _buildSpecialistFullCard(
-              context,
-              name: 'Sarah Johnson',
-              role: 'Hair Stylist · 8 years',
-              rating: '4.9',
-              reviews: '256',
-              price: 'From \$45',
-              isAvailable: true,
-            ),
-            _buildSpecialistFullCard(
-              context,
-              name: 'Emily Chen',
-              role: 'Makeup Artist · 6 years',
-              rating: '4.8',
-              reviews: '189',
-              price: 'From \$55',
-              isAvailable: true,
-            ),
-            _buildSpecialistFullCard(
-              context,
-              name: 'Maria Garcia',
-              role: 'Nail Technician · 5 years',
-              rating: '4.7',
-              reviews: '142',
-              price: 'From \$35',
-              isAvailable: false,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1476,106 +1613,122 @@ class BeautySpecialistsScreen extends StatelessWidget {
     required String reviews,
     required String price,
     required bool isAvailable,
+    String? distance,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderGrey.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 30,
-            backgroundColor: AppColors.background,
-            child: Icon(Icons.person, color: AppColors.textGrey, size: 30),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isAvailable
-                            ? AppColors.successGreen.withOpacity(0.1)
-                            : Colors.grey.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        isAvailable ? 'Available' : 'Busy',
-                        style: TextStyle(
-                          color: isAvailable
-                              ? AppColors.successGreen
-                              : AppColors.textGrey,
-                          fontSize: 10,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderGrey.withOpacity(0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const CircleAvatar(
+              radius: 30,
+              backgroundColor: AppColors.background,
+              child: Icon(Icons.person, color: AppColors.textGrey, size: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  role,
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 13,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isAvailable
+                              ? AppColors.successGreen.withOpacity(0.1)
+                              : Colors.grey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isAvailable ? 'Available' : 'Busy',
+                          style: TextStyle(
+                            color: isAvailable
+                                ? AppColors.successGreen
+                                : AppColors.textGrey,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
+                  const SizedBox(height: 2),
+                  Text(
+                    role,
+                    style: const TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 13,
                     ),
-                    Text(
-                      ' ($reviews)',
-                      style: const TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 12,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      price,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                      Text(
+                        ' ($reviews)',
+                        style: const TextStyle(
+                          color: AppColors.textGrey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (distance != null) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.location_on_outlined, color: AppColors.textGrey, size: 12),
+                        const SizedBox(width: 2),
+                        Text(
+                          distance,
+                          style: const TextStyle(
+                            color: AppColors.textGrey,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        price,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         color: AppColors.textDark,
                       ),
                     ),
@@ -1617,6 +1770,7 @@ class BeautySpecialistsScreen extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

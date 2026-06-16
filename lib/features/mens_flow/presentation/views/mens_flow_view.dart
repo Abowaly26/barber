@@ -2239,6 +2239,7 @@ class _HomeSpecialistsScreenState extends State<HomeSpecialistsScreen> {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'barber')
+          .where('barberType', whereIn: ['men', 'unisex'])
           .get();
 
       List<Map<String, dynamic>> list = [];

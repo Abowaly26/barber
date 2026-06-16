@@ -7,6 +7,11 @@ import 'package:app/features/booking_type/presentation/views/booking_type_view.d
 import 'package:app/features/main_shell/presentation/views/main_shell_view.dart';
 import 'package:app/features/available_times/presentation/views/available_times_view.dart';
 import 'package:app/features/chat/presentation/views/chat_room_view.dart';
+import 'package:app/features/booking/presentation/views/booking_home_screen.dart';
+import 'package:app/features/booking/presentation/views/book_service_screen.dart';
+import 'package:app/features/booking/presentation/views/select_date_time_screen.dart';
+import 'package:app/features/booking/presentation/views/booking_review_screen.dart';
+import 'package:app/features/booking/presentation/views/booking_success_screen.dart';
 
 class AppRouter {
   AppRouter._();
@@ -65,6 +70,37 @@ class AppRouter {
       case BookingTypeScreen.routeName:
         return MaterialPageRoute(
           builder: (_) => const BookingTypeScreen(),
+          settings: settings,
+        );
+
+      // Booking Feature
+      case BookingHomeScreen.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const BookingHomeScreen(),
+          settings: settings,
+        );
+
+      case BookServiceScreen.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const BookServiceScreen(),
+          settings: settings,
+        );
+
+      case SelectDateTimeScreen.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const SelectDateTimeScreen(),
+          settings: settings,
+        );
+
+      case BookingReviewScreen.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const BookingReviewScreen(),
+          settings: settings,
+        );
+
+      case BookingSuccessScreen.routeName:
+        return MaterialPageRoute(
+          builder: (_) => const BookingSuccessScreen(),
           settings: settings,
         );
 

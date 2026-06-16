@@ -182,6 +182,7 @@ class TimeSlotCard extends StatelessWidget {
               SizedBox(height: 16.h),
               // Address Row
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.location_on_outlined,

@@ -9,6 +9,8 @@ import 'config/routes/app_router.dart';
 import 'config/themes/app_theme.dart';
 import 'features/splash/presentation/views/splash_view.dart';
 import 'features/profile/presentation/cubit/profile_provider.dart';
+import 'features/booking/presentation/cubit/booking_cubit.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +35,10 @@ class BarberBookingApp extends StatelessWidget {
       splitScreenMode: true,
       builder: (context, child) {
         return MultiProvider(
-          providers: [ChangeNotifierProvider(create: (_) => ProfileProvider())],
+          providers: [
+            ChangeNotifierProvider(create: (_) => ProfileProvider()),
+            BlocProvider(create: (_) => BookingCubit()),
+          ],
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'حلاق - Barber Booking',

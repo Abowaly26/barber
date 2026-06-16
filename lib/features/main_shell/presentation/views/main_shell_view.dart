@@ -707,9 +707,10 @@ class _BookingsTab extends StatefulWidget {
 class _BookingsTabState extends State<_BookingsTab> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Map<String, Future<Map<String, dynamic>>> _barberCache = {};
-  
+
   DateTime _selectedDate = DateTime.now();
   String? _selectedBarberId;
+  String? _selectedBarberName;
   Map<String, dynamic>? _selectedSlot;
   bool _isConfirming = false;
 
@@ -720,7 +721,10 @@ class _BookingsTabState extends State<_BookingsTab> {
   @override
   void initState() {
     super.initState();
-    _barbersStream = _firestore.collection('users').where('role', isEqualTo: 'barber').snapshots();
+    _barbersStream = _firestore
+        .collection('users')
+        .where('role', isEqualTo: 'barber')
+        .snapshots();
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       _myBookingsStream = _firestore
@@ -746,7 +750,20 @@ class _BookingsTabState extends State<_BookingsTab> {
     if (value == null || value.isEmpty) return 'Not scheduled';
     try {
       final date = DateTime.parse(value);
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       return '${months[date.month - 1]} ${date.day}, ${date.year}';
     } catch (_) {
       return value.split('T').first;
@@ -859,12 +876,29 @@ class _BookingsTabState extends State<_BookingsTab> {
   }
 
   Widget _buildDateSelector() {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
+
     // Generate next 14 days
-    final dates = List.generate(14, (i) => DateTime.now().add(Duration(days: i)));
-    final currentMonth = '${months[_selectedDate.month - 1]} ${_selectedDate.year}';
+    final dates = List.generate(
+      14,
+      (i) => DateTime.now().add(Duration(days: i)),
+    );
+    final currentMonth =
+        '${months[_selectedDate.month - 1]} ${_selectedDate.year}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -878,10 +912,11 @@ class _BookingsTabState extends State<_BookingsTab> {
             itemCount: dates.length,
             itemBuilder: (context, index) {
               final date = dates[index];
-              final isSelected = date.year == _selectedDate.year && 
-                                 date.month == _selectedDate.month && 
-                                 date.day == _selectedDate.day;
-              
+              final isSelected =
+                  date.year == _selectedDate.year &&
+                  date.month == _selectedDate.month &&
+                  date.day == _selectedDate.day;
+
               return GestureDetector(
                 onTap: () {
                   setState(() {
@@ -896,15 +931,19 @@ class _BookingsTabState extends State<_BookingsTab> {
                     color: isSelected ? AppColors.primary : Colors.white,
                     borderRadius: BorderRadius.circular(20.r),
                     border: Border.all(
-                      color: isSelected ? AppColors.primary : AppColors.borderGrey.withOpacity(0.5),
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.borderGrey.withOpacity(0.5),
                     ),
-                    boxShadow: isSelected ? [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      )
-                    ] : [],
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.primary.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -914,7 +953,9 @@ class _BookingsTabState extends State<_BookingsTab> {
                         style: TextStyle(
                           fontSize: 13.sp,
                           fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white.withOpacity(0.9) : AppColors.textGrey,
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.9)
+                              : AppColors.textGrey,
                         ),
                       ),
                       SizedBox(height: 8.h),
@@ -941,7 +982,10 @@ class _BookingsTabState extends State<_BookingsTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Available Barbers', 'Choose your personal care expert'),
+        _buildSectionTitle(
+          'Available Barbers',
+          'Choose your personal care expert',
+        ),
         StreamBuilder<QuerySnapshot>(
           stream: _barbersStream,
           builder: (context, snapshot) {
@@ -951,14 +995,17 @@ class _BookingsTabState extends State<_BookingsTab> {
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24.w),
-                child: Text('No barbers available', style: TextStyle(color: AppColors.textGrey)),
+                child: Text(
+                  'No barbers available',
+                  style: TextStyle(color: AppColors.textGrey),
+                ),
               );
             }
 
             final barbers = snapshot.data!.docs;
 
             return SizedBox(
-              height: 130.h,
+              height: 140.h,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.symmetric(horizontal: 20.w),
@@ -970,28 +1017,30 @@ class _BookingsTabState extends State<_BookingsTab> {
                   final isSelected = _selectedBarberId == barberId;
 
                   final rating = barberData['rating']?.toString() ?? '4.9';
-                  final experience = barberData['experience']?.toString() ?? '5 years';
-                  final specialty = barberData['specialty'] ?? 'Hair & Beard Expert';
+                  final experience =
+                      barberData['experience']?.toString() ?? '5 years';
+                  final specialty =
+                      barberData['specialty'] ?? 'Hair & Beard Expert';
                   final name = barberData['name'] ?? 'Professional Barber';
-                  
-                  // Debug: Print all available fields
-                  print('Barber data keys: ${barberData.keys.toList()}');
-                  
-                  final address = barberData['address'] as String? ?? 
-                                   barberData['location'] as String? ?? 
-                                   barberData['salonAddress'] as String? ?? 
-                                   barberData['fullAddress'] as String? ?? 
-                                   barberData['shopAddress'] as String? ?? 
-                                   barberData['workplace'] as String? ?? 
-                                   barberData['addressLine'] as String? ?? 
-                                   barberData['street'] as String? ?? 
-                                   barberData['area'] as String? ?? '';
+
+                  final address =
+                      barberData['address'] as String? ??
+                      barberData['location'] as String? ??
+                      barberData['salonAddress'] as String? ??
+                      barberData['fullAddress'] as String? ??
+                      barberData['shopAddress'] as String? ??
+                      barberData['workplace'] as String? ??
+                      barberData['addressLine'] as String? ??
+                      barberData['street'] as String? ??
+                      barberData['area'] as String? ??
+                      '';
                   final photoUrl = barberData['photoUrl'];
 
                   return GestureDetector(
                     onTap: () {
                       setState(() {
                         _selectedBarberId = barberId;
+                        _selectedBarberName = name;
                         _selectedSlot = null; // reset slot when barber changes
                         _updateSlotsStream();
                       });
@@ -1004,7 +1053,9 @@ class _BookingsTabState extends State<_BookingsTab> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20.r),
                         border: Border.all(
-                          color: isSelected ? AppColors.primary : AppColors.borderGrey.withOpacity(0.3),
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.borderGrey.withOpacity(0.3),
                           width: isSelected ? 2 : 1,
                         ),
                         boxShadow: [
@@ -1022,7 +1073,10 @@ class _BookingsTabState extends State<_BookingsTab> {
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Container(
-                                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8.w,
+                                  vertical: 4.h,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFE8F5E9),
                                   borderRadius: BorderRadius.circular(12.r),
@@ -1043,9 +1097,18 @@ class _BookingsTabState extends State<_BookingsTab> {
                             children: [
                               CircleAvatar(
                                 radius: 26.r,
-                                backgroundColor: AppColors.primary.withOpacity(0.1),
-                                backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                                child: photoUrl == null ? Icon(Icons.person, color: AppColors.primary) : null,
+                                backgroundColor: AppColors.primary.withOpacity(
+                                  0.1,
+                                ),
+                                backgroundImage: photoUrl != null
+                                    ? NetworkImage(photoUrl)
+                                    : null,
+                                child: photoUrl == null
+                                    ? Icon(
+                                        Icons.person,
+                                        color: AppColors.primary,
+                                      )
+                                    : null,
                               ),
                               SizedBox(width: 12.w),
                               Expanded(
@@ -1065,18 +1128,30 @@ class _BookingsTabState extends State<_BookingsTab> {
                                     ),
                                     SizedBox(height: 8.h),
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
                                       children: [
-                                        Icon(Icons.location_on_rounded, color: AppColors.primary, size: 14.w),
-                                        SizedBox(width: 6.w),
+                                        Icon(
+                                          Icons.location_on_rounded,
+                                          color: AppColors.primary,
+                                          size: 14.w,
+                                        ),
+                                        SizedBox(width: 4.w),
                                         Expanded(
                                           child: Text(
-                                            address.isNotEmpty ? address : 'العنوان غير متوفر',
+                                            address.isNotEmpty
+                                                ? address
+                                                : 'العنوان غير متوفر',
                                             style: TextStyle(
                                               fontSize: 12.sp,
-                                              color: address.isNotEmpty ? AppColors.textDark : AppColors.textGrey.withOpacity(0.6),
+                                              color: address.isNotEmpty
+                                                  ? AppColors.textDark
+                                                  : AppColors.textGrey
+                                                        .withOpacity(0.6),
                                               fontWeight: FontWeight.w600,
+                                              height: 1.2,
                                             ),
-                                            maxLines: 2,
+                                            maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
@@ -1104,7 +1179,8 @@ class _BookingsTabState extends State<_BookingsTab> {
     if (_selectedBarberId == null) return const SizedBox.shrink();
 
     // The date string format to match appointments (YYYY-MM-DD)
-    final dateStr = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1118,88 +1194,264 @@ class _BookingsTabState extends State<_BookingsTab> {
             }
 
             // Filter client-side by date
-            final slots = snapshot.hasData ? snapshot.data!.docs.where((doc) {
+            final allSlots = snapshot.hasData
+                ? snapshot.data!.docs
+                : <QueryDocumentSnapshot>[];
+            final slots = allSlots.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
               final dt = data['dateTime']?.toString() ?? '';
-              return dt.startsWith(dateStr);
-            }).toList() : [];
+
+              // Try multiple date format matching strategies
+              if (dt.startsWith(dateStr)) return true;
+
+              // Try parsing the date and comparing
+              try {
+                final slotDate = DateTime.parse(dt);
+                final slotDateStr =
+                    '${slotDate.year}-${slotDate.month.toString().padLeft(2, '0')}-${slotDate.day.toString().padLeft(2, '0')}';
+                return slotDateStr == dateStr;
+              } catch (e) {
+                return false;
+              }
+            }).toList();
 
             // Sort slots by time
             slots.sort((a, b) {
-              final aTime = (a.data() as Map<String, dynamic>)['dateTime'] ?? '';
-              final bTime = (b.data() as Map<String, dynamic>)['dateTime'] ?? '';
+              final aTime =
+                  (a.data() as Map<String, dynamic>)['dateTime'] ?? '';
+              final bTime =
+                  (b.data() as Map<String, dynamic>)['dateTime'] ?? '';
               return aTime.toString().compareTo(bTime.toString());
             });
 
             if (slots.isEmpty) {
+              // If no slots for selected date, show all available slots with a message
+              if (allSlots.isNotEmpty) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 24.w,
+                        vertical: 12.h,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16.w,
+                            color: AppColors.primary,
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              'No slots for $dateStr. Showing all available dates:',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 12.sp,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Show all slots instead of filtering by date
+                    _buildSlotsGrid(allSlots, dateStr),
+                  ],
+                );
+              }
+
               return Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
-                child: Text('No available times for this date.', style: TextStyle(color: AppColors.textGrey)),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.event_busy,
+                      size: 48.w,
+                      color: AppColors.textGrey.withOpacity(0.5),
+                    ),
+                    SizedBox(height: 12.h),
+                    Text(
+                      'No available times for this date.',
+                      style: TextStyle(
+                        color: AppColors.textGrey,
+                        fontSize: 14.sp,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 8.h),
+                    Text(
+                      'Try selecting a different date',
+                      style: TextStyle(
+                        color: AppColors.textGrey.withOpacity(0.7),
+                        fontSize: 12.sp,
+                      ),
+                    ),
+                  ],
+                ),
               );
             }
 
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.symmetric(horizontal: 24.w),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 2.2,
-                crossAxisSpacing: 12.w,
-                mainAxisSpacing: 12.h,
-              ),
-              itemCount: slots.length,
-              itemBuilder: (context, index) {
-                final slotDoc = slots[index];
-                final slotData = slotDoc.data() as Map<String, dynamic>;
-                slotData['id'] = slotDoc.id;
-                
-                final isSelected = _selectedSlot?['id'] == slotDoc.id;
-                final timeStr = _formatTime(slotData['dateTime']);
-
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedSlot = slotData;
-                    });
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primary : Colors.white,
-                      borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.borderGrey.withOpacity(0.4),
-                      ),
-                      boxShadow: isSelected ? [
-                        BoxShadow(
-                          color: AppColors.primary.withOpacity(0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        )
-                      ] : [],
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      timeStr,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : AppColors.textDark,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
+            return _buildSlotsGrid(slots, dateStr);
           },
         ),
       ],
     );
   }
 
+  Widget _buildSlotsGrid(
+    List<QueryDocumentSnapshot> slotsList,
+    String dateStr,
+  ) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 2.2,
+        crossAxisSpacing: 12.w,
+        mainAxisSpacing: 12.h,
+      ),
+      itemCount: slotsList.length,
+      itemBuilder: (context, index) {
+        final slotDoc = slotsList[index];
+        final slotData = slotDoc.data() as Map<String, dynamic>;
+        slotData['id'] = slotDoc.id;
+
+        final isSelected = _selectedSlot?['id'] == slotDoc.id;
+        final timeStr = _formatTime(slotData['dateTime']);
+
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedSlot = slotData;
+            });
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.primary : Colors.white,
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.primary
+                    : AppColors.borderGrey.withOpacity(0.4),
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : [],
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              timeStr,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : AppColors.textDark,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleCancelBooking(Map<String, dynamic> booking) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Booking'),
+        content: const Text('Are you sure you want to cancel this booking?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.dangerRed),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final bookingId = booking['id'] as String?;
+      final barberId = booking['barberId'] as String?;
+      if (bookingId == null || barberId == null) return;
+
+      final dateStr = _formatDate(booking['dateTime']);
+      final timeStr = _formatTime(booking['dateTime']);
+
+      await _firestore.collection('appointments').doc(bookingId).update({
+        'status': 'cancelled',
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      final userProfile = context.read<ProfileProvider>().currentUser;
+      final customerName =
+          userProfile?.name ?? currentUser.displayName ?? 'Customer';
+      final chatId = '${currentUser.uid}_$barberId';
+      final timestamp = FieldValue.serverTimestamp();
+      final cancellationMessage =
+          '❌ تم إلغاء الحجز المعاد: $dateStr الساعة $timeStr';
+
+      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+        'customerId': currentUser.uid,
+        'customerName': customerName,
+        'barberId': barberId,
+        'barberName': booking['barberName'] ?? 'Your Barber',
+        'lastMessage': cancellationMessage,
+        'lastMessageTime': timestamp,
+        'unreadByBarber': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add({
+            'senderId': 'system',
+            'senderName': 'System',
+            'message': cancellationMessage,
+            'timestamp': timestamp,
+            'type': 'system_cancellation',
+          });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم إلغاء الحجز بنجاح'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel booking: $e'),
+            backgroundColor: AppColors.dangerRed,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _handleConfirmBooking() async {
     if (_selectedSlot == null) return;
-    
+
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1212,17 +1464,21 @@ class _BookingsTabState extends State<_BookingsTab> {
 
     try {
       final userProfile = context.read<ProfileProvider>().currentUser;
-      final customerName = userProfile?.name ?? currentUser.displayName ?? 'App User';
-      
-      await _firestore.collection('appointments').doc(_selectedSlot!['id']).update({
-        'status': 'pending',
-        'customerId': currentUser.uid,
-        'customerName': customerName,
-        'customerPhone': '',
-        'serviceName': 'App Booking',
-        'price': 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      });
+      final customerName =
+          userProfile?.name ?? currentUser.displayName ?? 'App User';
+
+      await _firestore
+          .collection('appointments')
+          .doc(_selectedSlot!['id'])
+          .update({
+            'status': 'pending',
+            'customerId': currentUser.uid,
+            'customerName': customerName,
+            'customerPhone': '',
+            'serviceName': 'App Booking',
+            'price': 0,
+            'updatedAt': DateTime.now().toIso8601String(),
+          });
 
       final slotWithId = Map<String, dynamic>.from(_selectedSlot!);
       final barberId = _selectedBarberId ?? '';
@@ -1238,7 +1494,7 @@ class _BookingsTabState extends State<_BookingsTab> {
         'customerId': currentUser.uid,
         'customerName': customerName,
         'barberId': barberId,
-        'barberName': 'Your Barber',
+        'barberName': _selectedBarberName ?? 'Your Barber',
         'lastMessage': messageText,
         'lastMessageTime': timestamp,
         'unreadByBarber': FieldValue.increment(1),
@@ -1249,12 +1505,12 @@ class _BookingsTabState extends State<_BookingsTab> {
           .doc(chatId)
           .collection('messages')
           .add({
-        'senderId': currentUser.uid,
-        'senderName': customerName,
-        'message': messageText,
-        'timestamp': timestamp,
-        'type': 'text',
-      });
+            'senderId': currentUser.uid,
+            'senderName': customerName,
+            'message': messageText,
+            'timestamp': timestamp,
+            'type': 'text',
+          });
 
       if (mounted) {
         Navigator.pushNamed(
@@ -1262,7 +1518,7 @@ class _BookingsTabState extends State<_BookingsTab> {
           ChatRoomView.routeName,
           arguments: {
             'barberId': barberId,
-            'barberName': 'Your Barber',
+            'barberName': _selectedBarberName ?? 'Your Barber',
           },
         );
       }
@@ -1270,11 +1526,10 @@ class _BookingsTabState extends State<_BookingsTab> {
       setState(() {
         _selectedSlot = null;
       });
-
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to request booking: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to request booking: $e')));
     } finally {
       if (mounted) {
         setState(() => _isConfirming = false);
@@ -1286,17 +1541,28 @@ class _BookingsTabState extends State<_BookingsTab> {
     return Padding(
       padding: EdgeInsets.all(24.w),
       child: ElevatedButton(
-        onPressed: _selectedSlot == null || _isConfirming ? null : _handleConfirmBooking,
+        onPressed: _selectedSlot == null || _isConfirming
+            ? null
+            : _handleConfirmBooking,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           disabledBackgroundColor: AppColors.primary.withOpacity(0.3),
           minimumSize: Size(double.infinity, 56.h),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
           elevation: _selectedSlot != null ? 8 : 0,
           shadowColor: AppColors.primary.withOpacity(0.5),
         ),
         child: _isConfirming
-            ? SizedBox(height: 24.w, width: 24.w, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            ? SizedBox(
+                height: 24.w,
+                width: 24.w,
+                child: const CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
             : Text(
                 'Request Booking',
                 style: TextStyle(
@@ -1360,7 +1626,9 @@ class _BookingsTabState extends State<_BookingsTab> {
 
   Widget _buildBookingCard(Map<String, dynamic> booking) {
     final statusLabel = _bookingStatusLabel(booking['status']);
-    
+    final status = booking['status']?.toString().toLowerCase() ?? '';
+    final isPending = status == 'pending';
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 6.h),
       padding: EdgeInsets.all(16.w),
@@ -1376,91 +1644,124 @@ class _BookingsTabState extends State<_BookingsTab> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48.w,
-            height: 48.w,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primaryLight,
-                  AppColors.primaryLight.withOpacity(0.6),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16.r),
-            ),
-            child: Icon(
-              Icons.calendar_today_rounded,
-              color: AppColors.primary,
-              size: 22.w,
-            ),
-          ),
-          SizedBox(width: 14.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        booking['serviceName'] ?? 'Confirmed Booking',
-                        style: TextStyle(
-                          fontSize: 15.sp,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textDark,
-                          letterSpacing: -0.2,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    _buildStatusPill(statusLabel, filled: true),
-                  ],
-                ),
-                SizedBox(height: 10.h),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 10.w,
-                    vertical: 6.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFB),
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.access_time_rounded,
-                        color: AppColors.primary,
-                        size: 14.w,
-                      ),
-                      SizedBox(width: 6.w),
-                      Flexible(
-                        child: Text(
-                          '${_formatDate(booking['dateTime'])} • ${_formatTime(booking['dateTime'])}',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppColors.textDark,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48.w,
+                height: 48.w,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.primaryLight,
+                      AppColors.primaryLight.withOpacity(0.6),
                     ],
                   ),
+                  borderRadius: BorderRadius.circular(16.r),
                 ),
-              ],
-            ),
+                child: Icon(
+                  Icons.calendar_today_rounded,
+                  color: AppColors.primary,
+                  size: 22.w,
+                ),
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            booking['serviceName'] ?? 'Confirmed Booking',
+                            style: TextStyle(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textDark,
+                              letterSpacing: -0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        _buildStatusPill(statusLabel, filled: true),
+                      ],
+                    ),
+                    SizedBox(height: 10.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 6.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFB),
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.access_time_rounded,
+                            color: AppColors.primary,
+                            size: 14.w,
+                          ),
+                          SizedBox(width: 6.w),
+                          Flexible(
+                            child: Text(
+                              '${_formatDate(booking['dateTime'])} • ${_formatTime(booking['dateTime'])}',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (isPending) ...[
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => _handleCancelBooking(booking),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.dangerRed,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 10.h,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                ),
+                child: Text(
+                  'Cancel Booking',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1524,7 +1825,10 @@ class _BookingsTabState extends State<_BookingsTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('My Bookings', 'Your upcoming and confirmed appointments'),
+        _buildSectionTitle(
+          'My Bookings',
+          'Your upcoming and confirmed appointments',
+        ),
         if (currentUser == null)
           _buildInfoState(
             icon: Icons.lock_outline_rounded,
@@ -1539,23 +1843,31 @@ class _BookingsTabState extends State<_BookingsTab> {
                 return Padding(
                   padding: EdgeInsets.symmetric(vertical: 40.h),
                   child: const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 3),
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                      strokeWidth: 3,
+                    ),
                   ),
                 );
               }
 
-              final bookings = snapshot.hasData ? _sortedDocs(snapshot.data!) : [];
+              final bookings = snapshot.hasData
+                  ? _sortedDocs(snapshot.data!)
+                  : [];
               if (bookings.isEmpty) {
                 return _buildInfoState(
                   icon: Icons.event_busy_rounded,
                   title: 'No bookings yet',
-                  message: 'Confirmed bookings will show here once you reserve a time.',
+                  message:
+                      'Confirmed bookings will show here once you reserve a time.',
                 );
               }
 
               return Column(
                 children: [
-                  ...bookings.map((doc) => _buildBookingCard(doc.data())).toList(),
+                  ...bookings
+                      .map((doc) => _buildBookingCard(doc.data()))
+                      .toList(),
                   SizedBox(height: 40.h),
                 ],
               );
@@ -1586,7 +1898,6 @@ class _BookingsTabState extends State<_BookingsTab> {
     );
   }
 }
-
 
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();

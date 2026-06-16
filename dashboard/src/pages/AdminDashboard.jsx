@@ -295,6 +295,7 @@ function ManageBarbers() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [specialty, setSpecialty] = useState('');
+  const [barberType, setBarberType] = useState('men'); // men, women, unisex
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('30.0444');
   const [longitude, setLongitude] = useState('31.2357');
@@ -345,6 +346,7 @@ function ManageBarbers() {
         phoneNumber: phone,
         address,
         specialty: specialty || 'حلاقة شعر وذقن',
+        barberType: barberType || 'men',
         role: 'barber',
         latitude: parseFloat(latitude) || 30.0444,
         longitude: parseFloat(longitude) || 31.2357,
@@ -361,6 +363,7 @@ function ManageBarbers() {
       setPhone('');
       setAddress('');
       setSpecialty('');
+      setBarberType('men');
       setLatitude('30.0444');
       setLongitude('31.2357');
       setRating('4.8');
@@ -422,6 +425,7 @@ function ManageBarbers() {
                   <th className="p-5">الحلاق</th>
                   <th className="p-5">البريد الإلكتروني</th>
                   <th className="p-5">رقم الهاتف</th>
+                  <th className="p-5">النوع</th>
                   <th className="p-5">التخصص</th>
                   <th className="p-5">العنوان التفصيلي</th>
                   <th className="p-5 text-left">الإجراءات</th>
@@ -438,6 +442,19 @@ function ManageBarbers() {
                     </td>
                     <td className="p-5 text-charcoal-300 font-inter">{barber.email}</td>
                     <td className="p-5 text-charcoal-300 font-inter">{barber.phoneNumber || barber.phone || 'غير مسجل'}</td>
+                    <td className="p-5">
+                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
+                        barber.barberType === 'men' ? 'bg-blue-500/10 text-blue-400' :
+                        barber.barberType === 'women' ? 'bg-pink-500/10 text-pink-400' :
+                        barber.barberType === 'unisex' ? 'bg-purple-500/10 text-purple-400' :
+                        'bg-charcoal-800 text-charcoal-400'
+                      }`}>
+                        {barber.barberType === 'men' ? 'رجال' :
+                         barber.barberType === 'women' ? 'نساء' :
+                         barber.barberType === 'unisex' ? 'مشترك' :
+                         'غير محدد'}
+                      </span>
+                    </td>
                     <td className="p-5 text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</td>
                     <td className="p-5 text-charcoal-300 max-w-xs leading-relaxed">{barber.address || 'غير مسجل'}</td>
                     <td className="p-5 text-left">
@@ -572,6 +589,46 @@ function ManageBarbers() {
                     <Scissors className="w-4 h-4" />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-charcoal-300 mb-2">نوع الحلاق *</label>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBarberType('men')}
+                    className={`py-3 px-4 rounded-xl border-2 text-sm font-bold transition-all ${
+                      barberType === 'men'
+                        ? 'bg-blue-500/10 border-blue-500 text-blue-400'
+                        : 'bg-charcoal-900 border-charcoal-800 text-charcoal-400 hover:border-charcoal-700'
+                    }`}
+                  >
+                    رجال
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBarberType('women')}
+                    className={`py-3 px-4 rounded-xl border-2 text-sm font-bold transition-all ${
+                      barberType === 'women'
+                        ? 'bg-pink-500/10 border-pink-500 text-pink-400'
+                        : 'bg-charcoal-900 border-charcoal-800 text-charcoal-400 hover:border-charcoal-700'
+                    }`}
+                  >
+                    نساء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBarberType('unisex')}
+                    className={`py-3 px-4 rounded-xl border-2 text-sm font-bold transition-all ${
+                      barberType === 'unisex'
+                        ? 'bg-purple-500/10 border-purple-500 text-purple-400'
+                        : 'bg-charcoal-900 border-charcoal-800 text-charcoal-400 hover:border-charcoal-700'
+                    }`}
+                  >
+                    مشترك
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] text-charcoal-500">سيتم عرض الحلاق بناءً على هذا النوع في شاشة الحجز</p>
               </div>
 
               <div>
