@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path_helper;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../errors/failures.dart';
+import '../config/local_supabase_config.dart';
 
 /// Service for handling Supabase Storage operations
 /// Provides image upload, deletion, and URL retrieval functionality
@@ -22,14 +23,28 @@ class SupabaseStorageService {
   static const String _hairstyleImagesBucket = 'hairstyle_images';
 
   // Supabase configuration
-  static const String _supabaseUrl = 'YOUR_SUPABASE_URL';
-  static const String _supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+  static const String _supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: LocalSupabaseConfig.url,
+  );
+  static const String _supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: LocalSupabaseConfig.anonKey,
+  );
 
   /// Initialize Supabase client
   /// Must be called before using any other methods
   static Future<Either<Failure, void>> initSupabase() async {
     if (_isInitialized) {
       return const Right(null);
+    }
+
+    if (!_hasValidConfig) {
+      const failure = SupabaseFailure(
+        'Missing Supabase config. Run the app with SUPABASE_URL and SUPABASE_ANON_KEY dart-defines.',
+      );
+      log(failure.message, name: 'SupabaseStorageService');
+      return const Left(failure);
     }
 
     try {
@@ -506,6 +521,13 @@ class SupabaseStorageService {
 
   /// Check if Supabase is initialized
   static bool get isInitialized => _isInitialized;
+
+  static bool get _hasValidConfig {
+    return _supabaseUrl.isNotEmpty &&
+        _supabaseAnonKey.isNotEmpty &&
+        !_supabaseUrl.startsWith('YOUR_') &&
+        !_supabaseAnonKey.startsWith('YOUR_');
+  }
 
   /// Get bucket names (useful for testing and debugging)
   static String get profileImagesBucket => _profileImagesBucket;

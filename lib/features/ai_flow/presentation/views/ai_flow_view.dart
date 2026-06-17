@@ -1,9 +1,135 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:io';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:app/features/ai_flow/data/ai_hairstyle_service.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
 import 'package:app/features/booking_type/presentation/views/booking_type_view.dart';
+import 'package:image_picker/image_picker.dart';
+
+const int _defaultRecommendationCount = 8;
+
+class HairRecommendation {
+  final String title;
+  final String badge;
+  final Color badgeColor;
+  final String desc;
+  final List<String> tags;
+  final List<Color> previewColors;
+  final String? imageUrl;
+
+  const HairRecommendation({
+    required this.title,
+    required this.badge,
+    required this.badgeColor,
+    required this.desc,
+    required this.tags,
+    required this.previewColors,
+    this.imageUrl,
+  });
+
+  HairRecommendation withImageUrl(String? imageUrl) {
+    return HairRecommendation(
+      title: title,
+      badge: badge,
+      badgeColor: badgeColor,
+      desc: desc,
+      tags: tags,
+      previewColors: previewColors,
+      imageUrl: imageUrl,
+    );
+  }
+}
+
+const List<HairRecommendation> _mockHairRecommendations = [
+  HairRecommendation(
+    title: 'Modern Textured Crop',
+    badge: 'Best Match',
+    badgeColor: AppColors.primary,
+    desc:
+        'A clean textured crop with a low fade that balances modern style with easy maintenance.',
+    tags: ['Low Fade', 'Easy Maintenance', 'Modern'],
+    previewColors: [Color(0xFFDEE9EA), Color(0xFF5A9A9C)],
+  ),
+  HairRecommendation(
+    title: 'Classic Side Part',
+    badge: 'Safe Choice',
+    badgeColor: Colors.blueGrey,
+    desc:
+        'A timeless side part with clean lines, suitable for professional and daily looks.',
+    tags: ['Classic', 'Work Ready', 'Neat'],
+    previewColors: [Color(0xFFE8EEF2), Color(0xFF607D8B)],
+  ),
+  HairRecommendation(
+    title: 'High Fade Pompadour',
+    badge: 'Bold Option',
+    badgeColor: Colors.orange,
+    desc:
+        'A sharp high fade with volume on top for a confident, polished, statement look.',
+    tags: ['High Fade', 'Volume', 'Event Ready'],
+    previewColors: [Color(0xFFFFE0B2), Color(0xFFFF9800)],
+  ),
+  HairRecommendation(
+    title: 'Low Taper Fade',
+    badge: 'Barber Favorite',
+    badgeColor: Color(0xFF6D8F72),
+    desc:
+        'A subtle taper that keeps the sides clean while preserving a natural, flexible shape.',
+    tags: ['Low Taper', 'Natural', 'Flexible'],
+    previewColors: [Color(0xFFEAF3EA), Color(0xFF6D8F72)],
+  ),
+  HairRecommendation(
+    title: 'Curly Top Fade',
+    badge: 'Texture Match',
+    badgeColor: Color(0xFF8E6BBE),
+    desc:
+        'Keeps curl texture visible on top with faded sides for shape and easier styling.',
+    tags: ['Curly', 'Mid Fade', 'Texture'],
+    previewColors: [Color(0xFFEDE7F6), Color(0xFF8E6BBE)],
+  ),
+  HairRecommendation(
+    title: 'Buzz Cut Fade',
+    badge: 'Low Effort',
+    badgeColor: Color(0xFF455A64),
+    desc:
+        'A clean buzz with faded sides for a sharp look that needs almost no daily styling.',
+    tags: ['Very Short', 'Clean', 'Low Maintenance'],
+    previewColors: [Color(0xFFECEFF1), Color(0xFF455A64)],
+  ),
+  HairRecommendation(
+    title: 'French Crop',
+    badge: 'Modern',
+    badgeColor: Color(0xFFC16B54),
+    desc:
+        'Short fringe and textured top with clean sides, ideal for a modern everyday cut.',
+    tags: ['Short Fringe', 'Modern', 'Daily'],
+    previewColors: [Color(0xFFFFECE6), Color(0xFFC16B54)],
+  ),
+  HairRecommendation(
+    title: 'Slick Back Undercut',
+    badge: 'Premium',
+    badgeColor: Color(0xFF2F6F73),
+    desc:
+        'A polished slick back with strong side contrast, best for a premium groomed style.',
+    tags: ['Undercut', 'Premium', 'Polished'],
+    previewColors: [Color(0xFFDDEEEF), Color(0xFF2F6F73)],
+  ),
+];
+
+List<HairRecommendation> _recommendationsFor(
+  int count, {
+  List<String> imageUrls = const [],
+}) {
+  final base = _mockHairRecommendations.take(count).toList(growable: false);
+
+  return List<HairRecommendation>.generate(base.length, (index) {
+    final imageUrl = index < imageUrls.length ? imageUrls[index] : null;
+    return base[index].withImageUrl(imageUrl);
+  }, growable: false);
+}
 
 // ==========================================
 // 1. AI ADVISOR INTRO
@@ -46,7 +172,10 @@ class AIAdvisorIntroScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -79,7 +208,7 @@ class AIAdvisorIntroScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Not sure which haircut suits you best? Upload a photo, tell us your preferences, and let our AI recommend the perfect style — personalized just for you.',
+                    'Upload your photo and get AI hairstyle options on your own face so you can choose what to send to your barber.',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.85),
                       fontSize: 13,
@@ -97,11 +226,20 @@ class AIAdvisorIntroScreen extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
-            _buildStepRow(Icons.camera_alt_outlined, 'Upload a front-facing photo'),
+            _buildStepRow(
+              Icons.camera_alt_outlined,
+              'Upload a front-facing photo',
+            ),
             const SizedBox(height: 12),
-            _buildStepRow(Icons.tune, 'Select your style preferences'),
+            _buildStepRow(
+              Icons.auto_awesome_outlined,
+              'Generate 8 hairstyle options',
+            ),
             const SizedBox(height: 12),
-            _buildStepRow(Icons.auto_awesome_outlined, 'Get AI-powered recommendations'),
+            _buildStepRow(
+              Icons.content_cut,
+              'Choose a look and show it to your barber',
+            ),
             const SizedBox(height: 28),
 
             // Feature Cards
@@ -114,7 +252,7 @@ class AIAdvisorIntroScreen extends StatelessWidget {
             _buildFeatureCard(
               Icons.flash_on,
               'Instant Results',
-              'Get recommendations in seconds',
+              'Generate 8 looks after upload',
             ),
             const SizedBox(height: 12),
             _buildFeatureCard(
@@ -165,10 +303,7 @@ class AIAdvisorIntroScreen extends StatelessWidget {
         ),
         const SizedBox(width: 14),
         Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 14, height: 1.3),
-          ),
+          child: Text(text, style: const TextStyle(fontSize: 14, height: 1.3)),
         ),
       ],
     );
@@ -231,7 +366,37 @@ class AIAdvisorUploadScreen extends StatefulWidget {
 }
 
 class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
-  bool _isUploaded = false;
+  final ImagePicker _imagePicker = ImagePicker();
+  XFile? _selectedPhoto;
+  bool _isPickingPhoto = false;
+
+  bool get _isUploaded => _selectedPhoto != null;
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    if (_isPickingPhoto) return;
+
+    setState(() => _isPickingPhoto = true);
+
+    try {
+      final photo = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1400,
+        imageQuality: 88,
+      );
+
+      if (!mounted || photo == null) return;
+
+      setState(() => _selectedPhoto = photo);
+    } on PlatformException catch (e) {
+      if (!mounted || e.code == 'already_active') return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open image picker: ${e.message}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isPickingPhoto = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -250,14 +415,13 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isUploaded = !_isUploaded; // Toggle upload state for demo
-                });
-              },
+              onTap: _isPickingPhoto
+                  ? null
+                  : () => _pickPhoto(ImageSource.gallery),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 40),
+                height: _isUploaded ? 280 : null,
+                padding: EdgeInsets.symmetric(vertical: _isUploaded ? 0 : 40),
                 decoration: BoxDecoration(
                   color: _isUploaded
                       ? AppColors.primaryLight.withOpacity(0.5)
@@ -270,64 +434,80 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
                     width: 2,
                   ),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!_isUploaded) ...[
-                      const Icon(
-                        Icons.camera_alt_outlined,
-                        color: AppColors.textGrey,
-                        size: 32,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Add Your Photo',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                child: _isUploaded
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.file(
+                              File(_selectedPhoto!.path),
+                              fit: BoxFit.cover,
+                            ),
+                            Positioned(
+                              left: 16,
+                              right: 16,
+                              bottom: 16,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.55),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Photo selected. Tap to change it.',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                      )
+                    : const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.camera_alt_outlined,
+                            color: AppColors.textGrey,
+                            size: 32,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Add Your Photo',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Upload a clear, front-facing photo',
+                            style: TextStyle(
+                              color: AppColors.textGrey,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Upload a clear, front-facing photo',
-                        style: TextStyle(
-                          color: AppColors.textGrey,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ] else ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Photo Uploaded',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Tap to change photo',
-                        style: TextStyle(
-                          color: AppColors.textGrey,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -335,7 +515,9 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {},
+                    onPressed: _isPickingPhoto
+                        ? null
+                        : () => _pickPhoto(ImageSource.gallery),
                     icon: const Icon(
                       Icons.image_outlined,
                       size: 18,
@@ -357,7 +539,9 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {},
+                    onPressed: _isPickingPhoto
+                        ? null
+                        : () => _pickPhoto(ImageSource.camera),
                     icon: const Icon(
                       Icons.camera_alt_outlined,
                       size: 18,
@@ -453,7 +637,11 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
                 ? () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const AIAdvisorPreferencesScreen(),
+                      builder: (_) => AIAdvisorLoadingScreen(
+                        photoPath: _selectedPhoto!.path,
+                        preferences: const {},
+                        recommendationCount: _defaultRecommendationCount,
+                      ),
                     ),
                   )
                 : null,
@@ -496,7 +684,9 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
 // 3. YOUR PREFERENCES
 // ==========================================
 class AIAdvisorPreferencesScreen extends StatefulWidget {
-  const AIAdvisorPreferencesScreen({super.key});
+  final String photoPath;
+
+  const AIAdvisorPreferencesScreen({super.key, required this.photoPath});
 
   @override
   State<AIAdvisorPreferencesScreen> createState() =>
@@ -512,6 +702,7 @@ class _AIAdvisorPreferencesScreenState
   String _maintenance = 'Medium';
   String _occasion = 'Daily';
   String _confidence = 'Balanced';
+  int _recommendationCount = _defaultRecommendationCount;
 
   @override
   Widget build(BuildContext context) {
@@ -576,6 +767,7 @@ class _AIAdvisorPreferencesScreenState
               _confidence,
               (v) => setState(() => _confidence = v),
             ),
+            _buildCountSection(),
             const SizedBox(height: 80),
           ],
         ),
@@ -596,7 +788,21 @@ class _AIAdvisorPreferencesScreenState
           child: ElevatedButton(
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const AIAdvisorLoadingScreen()),
+              MaterialPageRoute(
+                builder: (_) => AIAdvisorLoadingScreen(
+                  photoPath: widget.photoPath,
+                  preferences: {
+                    'stylePreference': _stylePref,
+                    'hairLengthTarget': _lengthTarget,
+                    'fadePreference': _fadePref,
+                    'beardPreference': _beardPref,
+                    'maintenanceLevel': _maintenance,
+                    'occasion': _occasion,
+                    'confidenceLevel': _confidence,
+                  },
+                  recommendationCount: _recommendationCount,
+                ),
+              ),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
@@ -679,13 +885,78 @@ class _AIAdvisorPreferencesScreenState
       ),
     );
   }
+
+  Widget _buildCountSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Number of AI Looks',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Start with 6 or 8 images to keep generation fast and affordable.',
+            style: TextStyle(color: AppColors.textGrey, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildCountChip(6),
+              const SizedBox(width: 10),
+              _buildCountChip(8),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCountChip(int count) {
+    final isSelected = count == _recommendationCount;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _recommendationCount = count),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary : Colors.white,
+            border: Border.all(
+              color: isSelected ? AppColors.primary : AppColors.borderGrey,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            '$count looks',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : AppColors.textDark,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ==========================================
 // 4. ANALYZING YOUR LOOK (LOADING SCREEN)
 // ==========================================
 class AIAdvisorLoadingScreen extends StatefulWidget {
-  const AIAdvisorLoadingScreen({super.key});
+  final String photoPath;
+  final Map<String, String> preferences;
+  final int recommendationCount;
+
+  const AIAdvisorLoadingScreen({
+    super.key,
+    required this.photoPath,
+    required this.preferences,
+    this.recommendationCount = _defaultRecommendationCount,
+  });
 
   @override
   State<AIAdvisorLoadingScreen> createState() => _AIAdvisorLoadingScreenState();
@@ -701,18 +972,51 @@ class _AIAdvisorLoadingScreenState extends State<AIAdvisorLoadingScreen> {
   }
 
   void _startMockAnalysis() async {
-    // Simulate analyzing process
+    // Replace this mock delay with your backend call:
+    // POST /api/ai/hairstyles { imageUrl, preferences, count }.
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) setState(() => _statusText = 'Analyzing hair texture...');
     await Future.delayed(const Duration(seconds: 1));
-    if (mounted) setState(() => _statusText = 'Finding best styles...');
-    await Future.delayed(const Duration(seconds: 1));
+    if (mounted) {
+      setState(
+        () => _statusText =
+            'Generating ${widget.recommendationCount} hairstyle previews...',
+      );
+    }
+
+    List<String> imageUrls = const [];
+    try {
+      imageUrls = await AIHairstyleService().generateHairstyles(
+        AIHairstyleGenerationRequest(
+          photoPath: widget.photoPath,
+          preferences: widget.preferences,
+          count: widget.recommendationCount,
+        ),
+      );
+    } catch (error, stackTrace) {
+      developer.log(
+        'AI hairstyle generation failed: $error',
+        name: 'AIAdvisorLoadingScreen',
+        stackTrace: stackTrace,
+      );
+      imageUrls = const [];
+    }
+
+    if (imageUrls.isEmpty) {
+      await Future.delayed(const Duration(seconds: 1));
+    }
 
     if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => const AIAdvisorRecommendationsScreen(),
+          builder: (_) => AIAdvisorRecommendationsScreen(
+            recommendationCount: widget.recommendationCount,
+            recommendations: _recommendationsFor(
+              widget.recommendationCount,
+              imageUrls: imageUrls,
+            ),
+          ),
         ),
       );
     }
@@ -779,10 +1083,23 @@ class _AIAdvisorLoadingScreenState extends State<AIAdvisorLoadingScreen> {
 // 5. YOUR RECOMMENDATIONS
 // ==========================================
 class AIAdvisorRecommendationsScreen extends StatelessWidget {
-  const AIAdvisorRecommendationsScreen({super.key});
+  final int recommendationCount;
+  final List<HairRecommendation>? recommendations;
+
+  const AIAdvisorRecommendationsScreen({
+    super.key,
+    this.recommendationCount = _defaultRecommendationCount,
+    this.recommendations,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final recommendations =
+        this.recommendations ?? _recommendationsFor(recommendationCount);
+    final hasGeneratedImages = recommendations.any(
+      (recommendation) => recommendation.imageUrl != null,
+    );
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -812,70 +1129,52 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Based on your face shape, hair texture, and preferences, here are your top recommendations.',
+            Text(
+              'Based on your face shape, hair texture, and preferences, here are $recommendationCount AI hairstyle options.',
               style: TextStyle(
                 color: AppColors.textGrey,
                 height: 1.5,
                 fontSize: 13,
               ),
             ),
+            if (!hasGeneratedImages) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                ),
+                child: const Text(
+                  'AI images are not available yet. Showing style placeholders until Supabase and the AI provider return image URLs.',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
-            _buildRecCard(
-              context,
-              title: 'Modern Textured Crop',
-              badge: 'Best Match',
-              badgeColor: AppColors.primary,
-              desc:
-                  'A clean, textured crop with a low fade that balances modern style with easy maintenance.',
-              tags: ['Face Shape Match', 'Easy Maintenance', 'Trend-Forward'],
-              onDetails: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AIAdvisorDetailScreen(
-                    title: 'Modern Textured Crop',
-                    badge: 'Best Match',
-                    badgeColor: AppColors.primary,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildRecCard(
-              context,
-              title: 'Classic Side Part',
-              badge: 'Safe Choice',
-              badgeColor: Colors.blueGrey,
-              desc:
-                  'A timeless side part with clean lines — versatile for professional and social settings.',
-              tags: ['Face Shape Match', 'Versatile', 'Works With Beard'],
-              onDetails: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AIAdvisorDetailScreen(
-                    title: 'Classic Side Part',
-                    badge: 'Safe Choice',
-                    badgeColor: Colors.blueGrey,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildRecCard(
-              context,
-              title: 'High Fade Pompadour',
-              badge: 'Bold Option',
-              badgeColor: Colors.orange,
-              desc:
-                  'A statement pompadour with a sharp high fade — confident, polished, and head-turning.',
-              tags: ['Trend-Forward', 'Statement Look', 'Event Ready'],
-              onDetails: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AIAdvisorDetailScreen(
-                    title: 'High Fade Pompadour',
-                    badge: 'Bold Option',
-                    badgeColor: Colors.orange,
+            ...recommendations.map(
+              (recommendation) => Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: _buildRecCard(
+                  context,
+                  recommendation: recommendation,
+                  onDetails: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AIAdvisorDetailScreen(
+                        title: recommendation.title,
+                        badge: recommendation.badge,
+                        badgeColor: recommendation.badgeColor,
+                        previewColors: recommendation.previewColors,
+                        imageUrl: recommendation.imageUrl,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -909,11 +1208,7 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
 
   Widget _buildRecCard(
     BuildContext context, {
-    required String title,
-    required String badge,
-    required Color badgeColor,
-    required String desc,
-    required List<String> tags,
+    required HairRecommendation recommendation,
     required VoidCallback onDetails,
   }) {
     return Container(
@@ -935,8 +1230,18 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.grey.shade200, Colors.grey.shade400],
+                colors: recommendation.previewColors,
               ),
+              image: recommendation.imageUrl == null
+                  ? null
+                  : DecorationImage(
+                      image: NetworkImage(recommendation.imageUrl!),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(
+                        Colors.black.withOpacity(0.25),
+                        BlendMode.darken,
+                      ),
+                    ),
             ),
             child: Stack(
               children: [
@@ -949,11 +1254,11 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: badgeColor,
+                      color: recommendation.badgeColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      badge,
+                      recommendation.badge,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
@@ -962,16 +1267,27 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Positioned(
+                Positioned(
                   top: 0,
                   right: 0,
-                  child: Icon(Icons.bookmark_border, color: Colors.white),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
                 ),
                 Positioned(
                   bottom: 0,
                   left: 0,
                   child: Text(
-                    title,
+                    recommendation.title,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
@@ -988,7 +1304,7 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  desc,
+                  recommendation.desc,
                   style: const TextStyle(
                     color: AppColors.textGrey,
                     height: 1.5,
@@ -999,7 +1315,7 @@ class AIAdvisorRecommendationsScreen extends StatelessWidget {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: tags
+                  children: recommendation.tags
                       .map(
                         (t) => Container(
                           padding: const EdgeInsets.symmetric(
@@ -1085,12 +1401,16 @@ class AIAdvisorDetailScreen extends StatelessWidget {
   final String title;
   final String badge;
   final Color badgeColor;
+  final List<Color> previewColors;
+  final String? imageUrl;
 
   const AIAdvisorDetailScreen({
     super.key,
     required this.title,
     required this.badge,
     required this.badgeColor,
+    required this.previewColors,
+    this.imageUrl,
   });
 
   @override
@@ -1117,8 +1437,18 @@ class AIAdvisorDetailScreen extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.grey.shade100, Colors.grey.shade400],
+                  colors: previewColors,
                 ),
+                image: imageUrl == null
+                    ? null
+                    : DecorationImage(
+                        image: NetworkImage(imageUrl!),
+                        fit: BoxFit.cover,
+                        colorFilter: ColorFilter.mode(
+                          Colors.black.withOpacity(0.25),
+                          BlendMode.darken,
+                        ),
+                      ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

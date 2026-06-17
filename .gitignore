@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local environment values
+env.local.json
+lib/core/config/local_supabase_config.dart
