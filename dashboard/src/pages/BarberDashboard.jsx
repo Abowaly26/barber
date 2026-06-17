@@ -29,15 +29,37 @@ import {
   AlertCircle,
   Activity,
   FileText,
-  Lock
+  Lock,
+  Menu
 } from 'lucide-react';
 import ManageMessages from './ManageMessages';
 
 export default function BarberDashboard() {
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
   return (
     <div className="flex bg-charcoal-950 min-h-screen">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-h-screen">
+      <Sidebar 
+        isMobileOpen={isMobileSidebarOpen} 
+        onMobileClose={() => setIsMobileSidebarOpen(false)} 
+      />
+      <main className="flex-1 p-4 lg:p-8 overflow-y-auto max-h-screen">
+        {/* Mobile Header with Hamburger */}
+        <div className="lg:hidden flex items-center justify-between mb-6">
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="p-2.5 rounded-xl bg-charcoal-900 border border-charcoal-800 text-charcoal-400 hover:text-white hover:border-charcoal-700 transition-all"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-gradient-to-tr from-gold-600 to-gold-400 rounded-lg text-charcoal-950">
+              <Scissors className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-white text-sm">منصة حلاقة</span>
+          </div>
+        </div>
+        
         <Routes>
           <Route path="/" element={<BarberHome />} />
           <Route path="/services" element={<ManageServices />} />

@@ -34,6 +34,8 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  static const int _messagesTabIndex = 3;
+
   late int _currentIndex;
 
   final List<Widget> _pages = const [
@@ -52,6 +54,8 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       // Add AppBar for Home tab (index 0) and Bookings tab (index 2)
       appBar: _currentIndex == 0
@@ -78,9 +82,29 @@ class _MainShellState extends State<MainShell> {
             )
           : null,
       body: IndexedStack(index: _currentIndex, children: _pages),
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+      bottomNavigationBar: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: currentUser == null
+            ? const Stream.empty()
+            : FirebaseFirestore.instance
+                .collection('chats')
+                .where('customerId', isEqualTo: currentUser.uid)
+                .snapshots(),
+        builder: (context, snapshot) {
+          final unreadMessagesCount = snapshot.data?.docs.fold<int>(
+                0,
+                (total, chatDoc) =>
+                    total + ((chatDoc.data()['unreadByCustomer'] as num?)?.toInt() ?? 0),
+              ) ??
+              0;
+
+          return CustomBottomNav(
+            currentIndex: _currentIndex,
+            messagesUnreadCount: _currentIndex == _messagesTabIndex
+                ? 0
+                : unreadMessagesCount,
+            onTap: (index) => setState(() => _currentIndex = index),
+          );
+        },
       ),
     );
   }
@@ -191,42 +215,6 @@ class _HomeTab extends StatelessWidget {
     );
   }
 
-  // ── Category Chips ──
-  Widget _buildCategoryChips() {
-    final categories = ['Hair', 'Nails', 'Facial', 'Full Service'];
-    return SizedBox(
-      height: 36.h,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
-        separatorBuilder: (_, __) => SizedBox(width: 8.w),
-        itemBuilder: (context, index) {
-          final isFirst = index == 0;
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: isFirst ? AppColors.primary : Colors.white,
-              borderRadius: BorderRadius.circular(20.r),
-              border: Border.all(
-                color: isFirst ? AppColors.primary : AppColors.borderGrey,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                categories[index],
-                style: TextStyle(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w600,
-                  color: isFirst ? Colors.white : AppColors.textDark,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   // ── Booking Cards (Men / Women / Kids) ──
   Widget _buildBookingCards(BuildContext context) {
     return SizedBox(
@@ -279,127 +267,6 @@ class _HomeTab extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ── Salon Row ──
-  Widget _buildSalonRow(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _buildSalonCard(
-            context,
-            'Glow Beauty Studio',
-            '4.8 (324)',
-            '1.2 km',
-            ['Hair', 'Nails', 'Facial'],
-          ),
-          SizedBox(width: 12.w),
-          _buildSalonCard(context, 'Luna Salon & Spa', '4.9 (512)', '2.4 km', [
-            'Full Service',
-            'Spa',
-          ]),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSalonCard(
-    BuildContext context,
-    String name,
-    String rating,
-    String distance,
-    List<String> tags,
-  ) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const SalonDetailScreen()),
-      ),
-      child: Container(
-        width: 200.w,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: AppColors.borderGrey.withOpacity(0.5)),
-          borderRadius: BorderRadius.circular(16.r),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 100.h,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade200,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
-              ),
-              child: const Center(
-                child: Icon(Icons.store, size: 32, color: AppColors.textGrey),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.all(12.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.sp,
-                      color: AppColors.textDark,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    '$rating · $distance',
-                    style: TextStyle(
-                      color: AppColors.textGrey,
-                      fontSize: 11.sp,
-                    ),
-                  ),
-                  SizedBox(height: 6.h),
-                  Wrap(
-                    spacing: 4.w,
-                    runSpacing: 4.h,
-                    children: tags
-                        .map(
-                          (tag) => Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8.w,
-                              vertical: 3.h,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight,
-                              borderRadius: BorderRadius.circular(8.r),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 10.sp,
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -654,41 +521,6 @@ class _QuickServiceTile extends StatelessWidget {
 }
 
 // ============================================================
-// PLACEHOLDER TABS (to be built out later)
-// ============================================================
-class _SearchTab extends StatelessWidget {
-  const _SearchTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search,
-              size: 64,
-              color: AppColors.textGrey.withOpacity(0.3),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Search',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Find salons, services, and more',
-              style: TextStyle(color: AppColors.textGrey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
 // MY BOOKINGS SECTION (reused in Home Tab & Bookings Tab)
 // ============================================================
 class _MyBookingsSection extends StatefulWidget {
@@ -719,8 +551,18 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
     try {
       final date = DateTime.parse(value);
       const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       return '${months[date.month - 1]} ${date.day}, ${date.year}';
     } catch (_) {
@@ -1055,13 +897,15 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
         'updatedAt': DateTime.now().toIso8601String(),
       });
 
+      if (!mounted) return;
+
       final userProfile = context.read<ProfileProvider>().currentUser;
       final customerName =
           userProfile?.name ?? currentUser.displayName ?? 'Customer';
       final chatId = '${currentUser.uid}_$barberId';
       final timestamp = FieldValue.serverTimestamp();
       final cancellationMessage =
-          '❌ تم إلغاء الحجز المعاد: $dateStr الساعة $timeStr';
+          '❌ Booking cancelled for: $dateStr at $timeStr';
 
       await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
         'customerId': currentUser.uid,
@@ -1088,7 +932,7 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم إلغاء الحجز بنجاح'),
+            content: Text('Booking cancelled successfully'),
             backgroundColor: AppColors.successGreen,
           ),
         );
@@ -1145,6 +989,13 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
 
               final bookings = snapshot.hasData
                   ? _sortedDocs(snapshot.data!)
+                        .map((doc) => {...doc.data(), 'id': doc.id})
+                        .where(
+                          (booking) =>
+                              booking['status']?.toString().toLowerCase() !=
+                              'cancelled',
+                        )
+                        .toList()
                   : [];
               if (bookings.isEmpty) {
                 return _buildInfoState(
@@ -1157,9 +1008,7 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
 
               return Column(
                 children: [
-                  ...bookings
-                      .map((doc) => _buildBookingCard(doc.data()))
-                      .toList(),
+                  ...bookings.map((b) => _buildBookingCard(b)),
                   SizedBox(height: 8.h),
                 ],
               );
@@ -1210,13 +1059,27 @@ class _BookingsTabState extends State<_BookingsTab> {
     }
   }
 
+  String _selectedDateKey() {
+    return '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+  }
+
   String _formatDate(String? value) {
     if (value == null || value.isEmpty) return 'Not scheduled';
     try {
       final date = DateTime.parse(value);
       const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       return '${months[date.month - 1]} ${date.day}, ${date.year}';
     } catch (_) {
@@ -1399,7 +1262,7 @@ class _BookingsTabState extends State<_BookingsTab> {
       children: [
         _buildSectionTitle(
           'Available Barbers',
-          'Choose your personal care expert',
+          'Choose your personal care expert for ${_selectedDateKey()}',
         ),
         StreamBuilder<QuerySnapshot>(
           stream: _barbersStream,
@@ -1431,11 +1294,6 @@ class _BookingsTabState extends State<_BookingsTab> {
                   final barberId = barberDoc.id;
                   final isSelected = _selectedBarberId == barberId;
 
-                  final rating = barberData['rating']?.toString() ?? '4.9';
-                  final experience =
-                      barberData['experience']?.toString() ?? '5 years';
-                  final specialty =
-                      barberData['specialty'] ?? 'Hair & Beard Expert';
                   final name = barberData['name'] ?? 'Professional Barber';
 
                   final address =
@@ -1640,41 +1498,6 @@ class _BookingsTabState extends State<_BookingsTab> {
             });
 
             if (slots.isEmpty) {
-              // If no slots for selected date, show all available slots with a message
-              if (allSlots.isNotEmpty) {
-                return Column(
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 24.w,
-                        vertical: 12.h,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16.w,
-                            color: AppColors.primary,
-                          ),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              'No slots for $dateStr. Showing all available dates:',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontSize: 12.sp,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Show all slots instead of filtering by date
-                    _buildSlotsGrid(allSlots, dateStr),
-                  ],
-                );
-              }
-
               return Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
                 child: Column(
@@ -1854,9 +1677,11 @@ class _BookingsTabState extends State<_BookingsTab> {
         _selectedSlot = null;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to request booking: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to request booking: $e')));
+      }
     } finally {
       if (mounted) {
         setState(() => _isConfirming = false);
@@ -1912,11 +1737,10 @@ class _BookingsTabState extends State<_BookingsTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildDateSelector(),
               _buildBarbersList(),
-              if (_selectedBarberId != null) _buildDateSelector(),
               if (_selectedBarberId != null) _buildTimeSlots(),
               if (_selectedBarberId != null) _buildConfirmButton(),
-              const _MyBookingsSection(),
             ],
           ),
         ),

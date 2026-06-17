@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../App';
 import { db } from '../firebase';
 import { 
@@ -18,11 +18,9 @@ import {
   Send, 
   MessageSquare, 
   Calendar, 
-  User, 
   Lock, 
-  Check, 
-  Search, 
-  AlertCircle 
+  Clock,
+  Sparkles
 } from 'lucide-react';
 
 export default function ManageMessages() {
@@ -92,11 +90,9 @@ export default function ManageMessages() {
   // 3. Listen to messages for the active chat
   useEffect(() => {
     if (!activeChat) {
-      setMessages([]);
       return;
     }
 
-    setLoadingMessages(true);
     const messagesQuery = query(
       collection(db, 'chats', activeChat.id, 'messages'),
       orderBy('timestamp', 'asc')
@@ -216,94 +212,141 @@ export default function ManageMessages() {
     return `${d} • ${t ? t.substring(0, 5) : ''}`;
   };
 
-  return (
-    <div className="animate-fade-in h-[calc(100vh-4rem)] flex flex-col">
-      {/* AppBar-style Header */}
-      <div className="flex items-center justify-center bg-charcoal-950 border-b border-charcoal-800 px-6 py-4 shrink-0">
-        <h1 className="text-lg font-bold text-white tracking-wide">Messages</h1>
-      </div>
+  const totalUnread = chats.reduce((sum, chat) => sum + Number(chat.unreadByBarber || 0), 0);
+  const activeInitial = activeChat?.customerName?.charAt(0)?.toUpperCase() || 'U';
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 overflow-hidden min-h-0 p-6">
-        
-        {/* RIGHT PANE: Chat List */}
-        <div className="lg:col-span-4 glass-panel border border-charcoal-800 rounded-2xl flex flex-col overflow-hidden bg-charcoal-900/40">
-          <div className="p-4 border-b border-charcoal-800 bg-charcoal-950/20">
-            <h3 className="text-md font-bold text-white mb-3 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-gold-500" />
-              <span>قائمة المحادثات</span>
-            </h3>
+  return (
+    <div className="animate-fade-in h-auto min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+      <div className="shrink-0 rounded-[28px] border border-gold-500/10 bg-gradient-to-br from-charcoal-900 via-charcoal-950 to-black p-4 sm:p-6 shadow-2xl shadow-black/30">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold-500/20 bg-gold-500/10 px-3 py-1 text-xs font-bold text-gold-300">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>مركز التواصل</span>
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">Messages</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-charcoal-400">
+              تابع محادثات العملاء، رد بسرعة، واقفل المواعيد المتاحة من نفس الشاشة.
+            </p>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-charcoal-800/40">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:min-w-[360px]">
+            <div className="rounded-2xl border border-charcoal-800 bg-black/30 p-3 text-center">
+              <div className="text-xl font-black text-white">{chats.length}</div>
+              <div className="mt-1 text-[10px] font-bold text-charcoal-500">محادثات</div>
+            </div>
+            <div className="rounded-2xl border border-charcoal-800 bg-black/30 p-3 text-center">
+              <div className="text-xl font-black text-gold-400">{totalUnread}</div>
+              <div className="mt-1 text-[10px] font-bold text-charcoal-500">غير مقروء</div>
+            </div>
+            <div className="rounded-2xl border border-charcoal-800 bg-black/30 p-3 text-center">
+              <div className="text-xl font-black text-white">{slots.length}</div>
+              <div className="mt-1 text-[10px] font-bold text-charcoal-500">مواعيد متاحة</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid flex-1 grid-cols-1 gap-4 overflow-visible py-4 lg:min-h-0 lg:grid-cols-12 lg:overflow-hidden">
+        <aside className="glass-panel order-1 flex min-h-[320px] flex-col overflow-hidden rounded-[28px] border border-charcoal-800 bg-charcoal-900/60 lg:col-span-4 lg:min-h-0">
+          <div className="shrink-0 border-b border-charcoal-800/80 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-base font-black text-white">
+                <MessageSquare className="h-5 w-5 text-gold-500" />
+                <span>قائمة المحادثات</span>
+              </h2>
+              {totalUnread > 0 && (
+                <span className="rounded-full bg-gold-500 px-2.5 py-1 text-xs font-black text-charcoal-950">
+                  {totalUnread} جديد
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-xs font-medium text-charcoal-500">اختار عميل لعرض المحادثة كاملة.</p>
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
             {loadingChats ? (
-              <div className="h-full flex items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="flex h-48 items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold-500 border-t-transparent"></div>
               </div>
             ) : chats.length > 0 ? (
               chats.map((chat) => {
                 const isActive = activeChat?.id === chat.id;
                 const unread = chat.unreadByBarber || 0;
+                const initial = chat.customerName?.charAt(0)?.toUpperCase() || 'U';
+
                 return (
                   <button
                     key={chat.id}
-                    onClick={() => setActiveChat(chat)}
-                    className={`w-full text-right p-4 transition-all flex items-start gap-3 hover:bg-charcoal-800/40 ${
-                      isActive ? 'bg-gradient-to-l from-gold-500/10 to-gold-500/5 text-gold-400 border-r-4 border-gold-500' : ''
+                    onClick={() => {
+                      setLoadingMessages(true);
+                      setActiveChat(chat);
+                    }}
+                    className={`group w-full rounded-2xl border p-4 text-right transition-all ${
+                      isActive
+                        ? 'border-gold-500/60 bg-gradient-to-l from-gold-500/15 to-charcoal-900 shadow-lg shadow-gold-950/20'
+                        : 'border-charcoal-800 bg-charcoal-950/70 hover:border-gold-500/30 hover:bg-charcoal-900'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-xl bg-charcoal-800 border border-charcoal-700 flex items-center justify-center text-charcoal-400 font-bold shrink-0">
-                      <User className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-white truncate text-sm">{chat.customerName}</span>
-                        {chat.lastMessageTime && (
-                          <span className="text-[10px] text-charcoal-500 font-inter">
-                            {formatTime(chat.lastMessageTime)}
-                          </span>
-                        )}
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border font-black ${
+                        isActive
+                          ? 'border-gold-500/40 bg-gold-500 text-charcoal-950'
+                          : 'border-charcoal-700 bg-charcoal-900 text-gold-400'
+                      }`}>
+                        {initial}
                       </div>
-                      <p className="text-xs text-charcoal-400 truncate mt-1">{chat.lastMessage}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-sm font-black text-white">{chat.customerName || 'عميل بدون اسم'}</span>
+                          {chat.lastMessageTime && (
+                            <span className="shrink-0 text-[11px] font-semibold text-charcoal-500">
+                              {formatTime(chat.lastMessageTime)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 truncate text-xs leading-5 text-charcoal-400">{chat.lastMessage || 'لا توجد رسائل بعد'}</p>
+                      </div>
+                      {unread > 0 && (
+                        <span className="shrink-0 rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-black text-charcoal-950">
+                          {unread}
+                        </span>
+                      )}
                     </div>
-                    {unread > 0 && (
-                      <span className="bg-gold-500 text-charcoal-950 font-black text-[10px] px-1.5 py-0.5 rounded-full shrink-0">
-                        {unread}
-                      </span>
-                    )}
                   </button>
                 );
               })
             ) : (
-              <div className="text-center py-20 text-charcoal-500 text-sm">
+              <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-charcoal-800 text-center text-sm text-charcoal-500">
+                <MessageSquare className="mb-3 h-8 w-8 text-charcoal-700" />
                 لا توجد محادثات نشطة حالياً
               </div>
             )}
           </div>
-        </div>
+        </aside>
 
-        {/* CENTER PANE: Chat Messages */}
-        <div className="lg:col-span-5 glass-panel border border-charcoal-800 rounded-2xl flex flex-col overflow-hidden bg-charcoal-950/20">
+        <section className="glass-panel order-2 flex min-h-[560px] flex-col overflow-hidden rounded-[28px] border border-charcoal-800 bg-charcoal-950/70 lg:col-span-5 lg:min-h-0">
           {activeChat ? (
             <>
-              {/* Chat Header */}
-              <div className="p-4 border-b border-charcoal-800 bg-charcoal-900/60 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-charcoal-800 flex items-center justify-center text-gold-500 shrink-0 font-bold border border-charcoal-700">
-                  {activeChat.customerName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">{activeChat.customerName}</h4>
-                  <p className="text-[10px] text-green-400 flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-                    <span>نشط الآن</span>
-                  </p>
+              <div className="shrink-0 border-b border-charcoal-800 bg-charcoal-900/80 p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-gold-500/30 bg-gold-500/15 text-lg font-black text-gold-300">
+                    {activeInitial}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-base font-black text-white">{activeChat.customerName || 'عميل بدون اسم'}</h3>
+                    <p className="mt-1 flex items-center gap-2 text-xs font-bold text-green-400">
+                      <span className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.8)]"></span>
+                      جاهز للرد والمتابعة
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Message List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(212,162,63,0.08),transparent_35%)] p-4 sm:p-5">
                 {loadingMessages ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="flex h-full items-center justify-center">
+                    <div className="h-7 w-7 animate-spin rounded-full border-2 border-gold-500 border-t-transparent"></div>
                   </div>
                 ) : messages.length > 0 ? (
                   messages.map((msg) => {
@@ -312,8 +355,8 @@ export default function ManageMessages() {
 
                     if (isSystem) {
                       return (
-                        <div key={msg.id} className="flex justify-center my-2">
-                          <div className="bg-green-950/30 border border-green-900/40 text-green-300 text-xs px-4 py-2 rounded-xl text-center">
+                        <div key={msg.id} className="flex justify-center">
+                          <div className="max-w-[90%] rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-2 text-center text-xs font-bold leading-5 text-green-300">
                             {msg.message}
                           </div>
                         </div>
@@ -321,19 +364,14 @@ export default function ManageMessages() {
                     }
 
                     return (
-                      <div
-                        key={msg.id}
-                        className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                            isMe
-                              ? 'bg-gradient-to-tr from-gold-600 to-gold-500 text-charcoal-950 font-medium rounded-br-none'
-                              : 'bg-charcoal-900 text-white border border-charcoal-800 rounded-bl-none'
-                          }`}
-                        >
-                          <p className="leading-relaxed">{msg.message}</p>
-                          <span className="block text-[9px] text-right mt-1 opacity-70 font-inter">
+                      <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[86%] rounded-3xl px-4 py-3 text-sm leading-6 shadow-lg sm:max-w-[78%] ${
+                          isMe
+                            ? 'rounded-br-md bg-gradient-to-br from-gold-400 to-gold-600 font-bold text-charcoal-950 shadow-gold-950/30'
+                            : 'rounded-bl-md border border-charcoal-800 bg-charcoal-900 text-charcoal-100 shadow-black/20'
+                        }`}>
+                          <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                          <span className={`mt-1 block text-[10px] font-semibold ${isMe ? 'text-charcoal-800/70' : 'text-charcoal-500'}`}>
                             {formatTime(msg.timestamp)}
                           </span>
                         </div>
@@ -341,75 +379,82 @@ export default function ManageMessages() {
                     );
                   })
                 ) : (
-                  <div className="text-center py-20 text-charcoal-600 text-sm">
-                    ابدأ التراسل، أرسل رسالة ترحيبية للعميل
+                  <div className="flex h-full flex-col items-center justify-center text-center text-charcoal-500">
+                    <MessageSquare className="mb-4 h-14 w-14 text-charcoal-800" />
+                    <p className="text-sm font-bold text-charcoal-400">ابدأ المحادثة برسالة واضحة للعميل</p>
+                    <p className="mt-2 text-xs">الرسائل الجديدة ستظهر هنا مباشرة.</p>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Message Input */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-charcoal-800 bg-charcoal-900/60 flex items-center gap-3">
-                <input
-                  type="text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="اكتب رسالة..."
-                  className="flex-1 px-4 py-3 bg-charcoal-950 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500"
-                />
-                <button
-                  type="submit"
-                  className="p-3 bg-gradient-to-l from-gold-500 to-gold-400 hover:from-gold-600 hover:to-gold-500 text-charcoal-950 rounded-xl transition-all shadow-md active:scale-95"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
+              <form onSubmit={handleSendMessage} className="shrink-0 border-t border-charcoal-800 bg-charcoal-900/90 p-3 sm:p-4">
+                <div className="flex items-center gap-2 rounded-2xl border border-charcoal-800 bg-black/40 p-2 focus-within:border-gold-500/70 focus-within:ring-2 focus-within:ring-gold-500/10">
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="اكتب رسالة واضحة للعميل..."
+                    className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder-charcoal-600 outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!text.trim()}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-gold-400 to-gold-600 text-charcoal-950 shadow-lg shadow-gold-950/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
               </form>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-charcoal-500 py-20">
-              <MessageSquare className="w-16 h-16 text-charcoal-800 mb-4" />
-              <p className="text-sm">اختر محادثة من القائمة الجانبية لبدء التراسل</p>
+            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-charcoal-800 bg-charcoal-900 text-gold-500">
+                <MessageSquare className="h-9 w-9" />
+              </div>
+              <h3 className="text-lg font-black text-white">اختار محادثة</h3>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-charcoal-500">اختار عميل من قائمة المحادثات لعرض الرسائل والرد عليه بشكل مباشر.</p>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* LEFT PANE: Quick Slot Management */}
-        <div className="lg:col-span-3 glass-panel border border-charcoal-800 rounded-2xl flex flex-col overflow-hidden bg-charcoal-900/40">
-          <div className="p-4 border-b border-charcoal-800 bg-charcoal-950/20">
-            <h3 className="text-md font-bold text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gold-500" />
+        <aside className="glass-panel order-3 flex min-h-[360px] flex-col overflow-hidden rounded-[28px] border border-charcoal-800 bg-charcoal-900/60 lg:col-span-3 lg:min-h-0">
+          <div className="shrink-0 border-b border-charcoal-800/80 p-4 sm:p-5">
+            <h2 className="flex items-center gap-2 text-base font-black text-white">
+              <Calendar className="h-5 w-5 text-gold-500" />
               <span>إغلاق موعد متاح</span>
-            </h3>
-            <p className="text-[10px] text-charcoal-400 mt-1 font-medium">احجز أو أغلق الموعد مباشرة أثناء المحادثة</p>
+            </h2>
+            <p className="mt-2 text-xs leading-5 text-charcoal-500">اقفل أو احجز موعد يدوي أثناء المحادثة بدون الخروج من الصفحة.</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
             {slots.length > 0 ? (
               slots.map((slot) => (
-                <div key={slot.id} className="p-3.5 rounded-xl bg-charcoal-950/50 border border-charcoal-800/80 flex flex-col justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-gold-500 bg-gold-500/10 px-2 py-0.5 rounded-full">متاح للجميع</span>
-                    <div className="text-xs font-bold text-white font-inter mt-2">
-                      {formatSlotDateTime(slot.dateTime)}
-                    </div>
+                <div key={slot.id} className="rounded-2xl border border-charcoal-800 bg-charcoal-950/70 p-4 transition-all hover:border-gold-500/30">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="rounded-full bg-gold-500/10 px-2.5 py-1 text-[10px] font-black text-gold-400">متاح للجميع</span>
+                    <Clock className="h-4 w-4 text-charcoal-600" />
+                  </div>
+                  <div className="mb-4 text-sm font-black text-white font-inter">
+                    {formatSlotDateTime(slot.dateTime)}
                   </div>
                   <button
                     onClick={() => handleCloseSlot(slot.id)}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-charcoal-900 hover:bg-gold-500 text-charcoal-400 hover:text-charcoal-950 border border-charcoal-800 hover:border-gold-500 font-bold rounded-lg text-xs transition-all active:scale-98"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-charcoal-800 bg-charcoal-900 px-3 py-2.5 text-xs font-black text-charcoal-300 transition-all hover:border-gold-500 hover:bg-gold-500 hover:text-charcoal-950"
                   >
-                    <Lock className="w-3.5 h-3.5" />
+                    <Lock className="h-4 w-4" />
                     <span>إغلاق الموعد / حجز يدوي</span>
                   </button>
                 </div>
               ))
             ) : (
-              <div className="text-center py-12 text-charcoal-600 text-xs">
+              <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-charcoal-800 text-center text-xs text-charcoal-600">
+                <Calendar className="mb-3 h-8 w-8 text-charcoal-700" />
                 لا توجد مواعيد متاحة حالياً لجدولتها
               </div>
             )}
           </div>
-        </div>
-
+        </aside>
       </div>
     </div>
   );

@@ -10,10 +10,12 @@ class CustomBottomNav extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.messagesUnreadCount = 0,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final int messagesUnreadCount;
 
   static const _items = <_NavItem>[
     _NavItem(
@@ -80,7 +82,13 @@ class CustomBottomNav extends StatelessWidget {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => onTap(index),
-              child: _NavItemWidget(item: item, isSelected: isSelected),
+              child: _NavItemWidget(
+                item: item,
+                isSelected: isSelected,
+                unreadCount: index == 3 && !isSelected
+                    ? messagesUnreadCount
+                    : 0,
+              ),
             ),
           );
         }),
@@ -104,10 +112,15 @@ class _NavItem {
 
 /// Animated widget for each nav item
 class _NavItemWidget extends StatefulWidget {
-  const _NavItemWidget({required this.item, required this.isSelected});
+  const _NavItemWidget({
+    required this.item,
+    required this.isSelected,
+    required this.unreadCount,
+  });
 
   final _NavItem item;
   final bool isSelected;
+  final int unreadCount;
 
   @override
   State<_NavItemWidget> createState() => _NavItemWidgetState();
@@ -158,6 +171,7 @@ class _NavItemWidgetState extends State<_NavItemWidget>
     final primaryColor = AppColors.primary;
     const inactiveColor = AppColors.textGrey;
     final color = widget.isSelected ? primaryColor : inactiveColor;
+    final showUnreadBadge = widget.unreadCount > 0;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -183,18 +197,63 @@ class _NavItemWidgetState extends State<_NavItemWidget>
                 scale: _scaleAnim.value,
                 child: FadeTransition(
                   opacity: _fadeAnim,
-                  child: widget.item.svgPath != null
-                      ? SvgPicture.asset(
-                          widget.item.svgPath!,
-                          width: 22.w,
-                          height: 22.h,
-                          colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                        )
-                      : Icon(
-                          widget.item.fallbackIcon,
-                          size: 22.w,
-                          color: color,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      widget.item.svgPath != null
+                          ? SvgPicture.asset(
+                              widget.item.svgPath!,
+                              width: 22.w,
+                              height: 22.h,
+                              colorFilter: ColorFilter.mode(
+                                color,
+                                BlendMode.srcIn,
+                              ),
+                            )
+                          : Icon(
+                              widget.item.fallbackIcon,
+                              size: 22.w,
+                              color: color,
+                            ),
+                      if (showUnreadBadge)
+                        Positioned(
+                          right: -7.w,
+                          top: -7.h,
+                          child: Container(
+                            constraints: BoxConstraints(
+                              minWidth: 15.w,
+                              minHeight: 15.w,
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: 3.w),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE53935),
+                              shape: widget.unreadCount > 9
+                                  ? BoxShape.rectangle
+                                  : BoxShape.circle,
+                              borderRadius: widget.unreadCount > 9
+                                  ? BorderRadius.circular(9.r)
+                                  : null,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5.w,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              widget.unreadCount > 99
+                                  ? '99+'
+                                  : widget.unreadCount.toString(),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 8.sp,
+                                fontWeight: FontWeight.w800,
+                                height: 1,
+                              ),
+                            ),
+                          ),
                         ),
+                    ],
+                  ),
                 ),
               ),
             ),

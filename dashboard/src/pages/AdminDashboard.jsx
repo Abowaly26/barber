@@ -32,7 +32,8 @@ import {
   Mail,
   Lock,
   Activity,
-  AlertCircle
+  AlertCircle,
+  Menu
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -47,10 +48,31 @@ const firebaseConfig = {
 };
 
 export default function AdminDashboard() {
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
   return (
     <div className="flex bg-charcoal-950 min-h-screen">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-h-screen">
+      <Sidebar 
+        isMobileOpen={isMobileSidebarOpen} 
+        onMobileClose={() => setIsMobileSidebarOpen(false)} 
+      />
+      <main className="flex-1 p-4 lg:p-8 overflow-y-auto max-h-screen">
+        {/* Mobile Header with Hamburger */}
+        <div className="lg:hidden flex items-center justify-between mb-6">
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="p-2.5 rounded-xl bg-charcoal-900 border border-charcoal-800 text-charcoal-400 hover:text-white hover:border-charcoal-700 transition-all"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-gradient-to-tr from-gold-600 to-gold-400 rounded-lg text-charcoal-950">
+              <Scissors className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-white text-sm">منصة حلاقة</span>
+          </div>
+        </div>
+        
         <Routes>
           <Route path="/" element={<AdminHome />} />
           <Route path="/barbers" element={<ManageBarbers />} />
@@ -418,59 +440,116 @@ function ManageBarbers() {
       {/* Barbers Table / Grid */}
       <div className="glass-panel rounded-2xl border border-charcoal-800 overflow-hidden">
         {barbers.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse">
-              <thead>
-                <tr className="border-b border-charcoal-800 bg-charcoal-900/40 text-xs font-bold text-charcoal-400">
-                  <th className="p-5">الحلاق</th>
-                  <th className="p-5">البريد الإلكتروني</th>
-                  <th className="p-5">رقم الهاتف</th>
-                  <th className="p-5">النوع</th>
-                  <th className="p-5">التخصص</th>
-                  <th className="p-5">العنوان التفصيلي</th>
-                  <th className="p-5 text-left">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-charcoal-800/50 text-sm">
-                {barbers.map((barber) => (
-                  <tr key={barber.id} className="hover:bg-charcoal-900/30 transition-colors">
-                    <td className="p-5 flex items-center gap-3">
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="border-b border-charcoal-800 bg-charcoal-900/40 text-xs font-bold text-charcoal-400">
+                    <th className="p-5">الحلاق</th>
+                    <th className="p-5">البريد الإلكتروني</th>
+                    <th className="p-5">رقم الهاتف</th>
+                    <th className="p-5">النوع</th>
+                    <th className="p-5">التخصص</th>
+                    <th className="p-5">العنوان التفصيلي</th>
+                    <th className="p-5 text-left">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-charcoal-800/50 text-sm">
+                  {barbers.map((barber) => (
+                    <tr key={barber.id} className="hover:bg-charcoal-900/30 transition-colors">
+                      <td className="p-5 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-charcoal-800 border border-charcoal-700 flex items-center justify-center text-gold-500 font-bold">
+                          {barber.name?.charAt(0)}
+                        </div>
+                        <span className="font-bold text-white">{barber.name}</span>
+                      </td>
+                      <td className="p-5 text-charcoal-300 font-inter">{barber.email}</td>
+                      <td className="p-5 text-charcoal-300 font-inter">{barber.phoneNumber || barber.phone || 'غير مسجل'}</td>
+                      <td className="p-5">
+                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
+                          barber.barberType === 'men' ? 'bg-blue-500/10 text-blue-400' :
+                          barber.barberType === 'women' ? 'bg-pink-500/10 text-pink-400' :
+                          barber.barberType === 'unisex' ? 'bg-purple-500/10 text-purple-400' :
+                          'bg-charcoal-800 text-charcoal-400'
+                        }`}>
+                          {barber.barberType === 'men' ? 'رجال' :
+                           barber.barberType === 'women' ? 'نساء' :
+                           barber.barberType === 'unisex' ? 'مشترك' :
+                           'غير محدد'}
+                        </span>
+                      </td>
+                      <td className="p-5 text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</td>
+                      <td className="p-5 text-charcoal-300 max-w-xs leading-relaxed">{barber.address || 'غير مسجل'}</td>
+                      <td className="p-5 text-left">
+                        <button
+                          onClick={() => handleDeleteBarber(barber.id)}
+                          className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
+                          title="حذف الحلاق"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4 p-4">
+              {barbers.map((barber) => (
+                <div key={barber.id} className="p-4 rounded-xl bg-charcoal-900/60 border border-charcoal-800/60">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-charcoal-800 border border-charcoal-700 flex items-center justify-center text-gold-500 font-bold">
                         {barber.name?.charAt(0)}
                       </div>
-                      <span className="font-bold text-white">{barber.name}</span>
-                    </td>
-                    <td className="p-5 text-charcoal-300 font-inter">{barber.email}</td>
-                    <td className="p-5 text-charcoal-300 font-inter">{barber.phoneNumber || barber.phone || 'غير مسجل'}</td>
-                    <td className="p-5">
-                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${
-                        barber.barberType === 'men' ? 'bg-blue-500/10 text-blue-400' :
-                        barber.barberType === 'women' ? 'bg-pink-500/10 text-pink-400' :
-                        barber.barberType === 'unisex' ? 'bg-purple-500/10 text-purple-400' :
-                        'bg-charcoal-800 text-charcoal-400'
-                      }`}>
-                        {barber.barberType === 'men' ? 'رجال' :
-                         barber.barberType === 'women' ? 'نساء' :
-                         barber.barberType === 'unisex' ? 'مشترك' :
-                         'غير محدد'}
-                      </span>
-                    </td>
-                    <td className="p-5 text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</td>
-                    <td className="p-5 text-charcoal-300 max-w-xs leading-relaxed">{barber.address || 'غير مسجل'}</td>
-                    <td className="p-5 text-left">
-                      <button
-                        onClick={() => handleDeleteBarber(barber.id)}
-                        className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
-                        title="حذف الحلاق"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <div>
+                        <h4 className="font-bold text-white">{barber.name}</h4>
+                        <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                          barber.barberType === 'men' ? 'bg-blue-500/10 text-blue-400' :
+                          barber.barberType === 'women' ? 'bg-pink-500/10 text-pink-400' :
+                          barber.barberType === 'unisex' ? 'bg-purple-500/10 text-purple-400' :
+                          'bg-charcoal-800 text-charcoal-400'
+                        }`}>
+                          {barber.barberType === 'men' ? 'رجال' :
+                           barber.barberType === 'women' ? 'نساء' :
+                           barber.barberType === 'unisex' ? 'مشترك' :
+                           'غير محدد'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteBarber(barber.id)}
+                      className="p-2 rounded-lg bg-charcoal-950 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
+                      title="حذف الحلاق"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-charcoal-400 text-xs">البريد:</span>
+                      <span className="text-charcoal-300 font-inter">{barber.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-charcoal-400 text-xs">الهاتف:</span>
+                      <span className="text-charcoal-300 font-inter">{barber.phoneNumber || barber.phone || 'غير مسجل'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-charcoal-400 text-xs">التخصص:</span>
+                      <span className="text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-charcoal-400 text-xs">العنوان:</span>
+                      <span className="text-charcoal-300 leading-relaxed">{barber.address || 'غير مسجل'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="text-center py-20 text-charcoal-500">
             <Scissors className="w-12 h-12 mx-auto mb-4 text-charcoal-700" />
