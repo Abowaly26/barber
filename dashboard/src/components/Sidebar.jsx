@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Sliders,
   MessageSquare,
+  ShoppingBag,
   Menu,
   X
 } from 'lucide-react';
@@ -21,6 +22,7 @@ export default function Sidebar({ isMobileOpen, onMobileClose }) {
   const adminLinks = [
     { to: '/admin', label: 'الرئيسية والتقارير', icon: LayoutDashboard, end: true },
     { to: '/admin/barbers', label: 'إدارة الحلاقين', icon: Scissors },
+    { to: '/admin/store', label: 'إدارة متجر QUTI', icon: ShoppingBag },
   ];
 
   const barberLinks = [

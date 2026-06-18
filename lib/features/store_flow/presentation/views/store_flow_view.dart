@@ -2,8 +2,11 @@
 
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
+import 'package:app/features/store_flow/data/models/store_item_model.dart';
+import 'package:app/features/store_flow/data/repos/store_repository.dart';
 
 // ==========================================
 // STORE SHARED WIDGETS
@@ -353,7 +356,7 @@ class StoreHomeScreen extends StatelessWidget {
           'QUTI Store',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        actions: const [StoreCartAction(), SizedBox(width: 8)],
+        actions: [const StoreCartAction(), const SizedBox(width: 8)],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: bottomInset),
@@ -382,49 +385,31 @@ class StoreHomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Recommended
+            _buildSectionHeader('Offers', 'See All', () {}),
+            const _StoreItemsSection(
+              type: StoreItemType.offer,
+              emptyMessage: 'No offers added yet',
+            ),
+            const SizedBox(height: 16),
+
             _buildSectionHeader(
-              'Recommended',
+              'Products',
               'See All',
               () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const StoreProductsScreen()),
               ),
             ),
-            const SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  StoreProductCard(
-                    title: 'Premium Beard Oil',
-                    brand: 'QUTI Care',
-                    price: '\$24.99',
-                    oldPrice: '\$29.99',
-                    rating: '4.8',
-                    badge: 'Best Seller',
-                    width: 160,
-                  ),
-                  SizedBox(width: 16),
-                  StoreProductCard(
-                    title: 'Matte Hair Pomade',
-                    brand: 'StylePro',
-                    price: '\$18.5',
-                    rating: '4.6',
-                    width: 160,
-                  ),
-                  SizedBox(width: 16),
-                  StoreProductCard(
-                    title: 'Daily Shampoo 500ml',
-                    brand: 'CleanCut',
-                    price: '\$15.99',
-                    rating: '4.5',
-                    badge: 'New',
-                    badgeColor: AppColors.primary,
-                    width: 160,
-                  ),
-                ],
-              ),
+            const _StoreItemsSection(
+              type: StoreItemType.product,
+              emptyMessage: 'No products added yet',
+            ),
+            const SizedBox(height: 16),
+
+            _buildSectionHeader('Beauty Services', 'See All', () {}),
+            const _StoreItemsSection(
+              type: StoreItemType.service,
+              emptyMessage: 'No services added yet',
             ),
             const SizedBox(height: 16),
           ],
@@ -498,6 +483,89 @@ class StoreHomeScreen extends StatelessWidget {
   }
 }
 
+class _StoreItemsSection extends StatelessWidget {
+  const _StoreItemsSection({required this.type, required this.emptyMessage});
+
+  final StoreItemType type;
+  final String emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: StoreRepository().streamItems(type: type, limit: 10),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 230,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final result = snapshot.data;
+        if (result == null) {
+          return _StoreEmptySection(message: emptyMessage);
+        }
+
+        return result.fold(
+          (failure) => _StoreEmptySection(message: failure.message),
+          (items) {
+            if (items.isEmpty) return _StoreEmptySection(message: emptyMessage);
+
+            return SizedBox(
+              height: 280,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: items.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 16),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return StoreProductCard(
+                    title: item.title,
+                    brand: item.brand,
+                    price: item.formattedPrice,
+                    oldPrice: item.formattedOldPrice,
+                    rating: item.formattedRating,
+                    badge: item.badge ?? item.type.label,
+                    imageUrl: item.imageUrl,
+                    description: item.description,
+                    width: 160,
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _StoreEmptySection extends StatelessWidget {
+  const _StoreEmptySection({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 120,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderGrey),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(color: AppColors.textGrey),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
 // ==========================================
 // 2. PRODUCTS LIST SCREEN
 // ==========================================
@@ -551,95 +619,100 @@ class StoreProductsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // List Header
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '6 products found',
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 13),
-                ),
-                Row(
-                  children: [
-                    Icon(Icons.swap_vert, size: 16, color: AppColors.primary),
-                    SizedBox(width: 4),
-                    Text(
-                      'Sort',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Grid
           Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              childAspectRatio: 0.65,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              children: const [
-                StoreProductCard(
-                  title: 'Premium Beard Oil',
-                  brand: 'QUTI Care',
-                  price: '\$24.99',
-                  rating: '4.8',
-                  badge: 'Best Seller',
-                  isGrid: true,
-                ),
-                StoreProductCard(
-                  title: 'Matte Hair Pomade',
-                  brand: 'StylePro',
-                  price: '\$18.5',
-                  rating: '4.6',
-                  isGrid: true,
-                ),
-                StoreProductCard(
-                  title: 'Daily Shampoo 500ml',
-                  brand: 'CleanCut',
-                  price: '\$15.99',
-                  rating: '4.5',
-                  badge: 'New',
-                  badgeColor: AppColors.primary,
-                  isGrid: true,
-                ),
-                StoreProductCard(
-                  title: 'Professional Trimmer',
-                  brand: 'BladeMax',
-                  price: '\$89.99',
-                  oldPrice: '\$129.99',
-                  rating: '4.9',
-                  badge: '-25%',
-                  badgeColor: Color(0xFFE57373),
-                  isGrid: true,
-                ),
-                StoreProductCard(
-                  title: 'Hair Wax Strong Hold',
-                  brand: 'StylePro',
-                  price: '\$14.99',
-                  rating: '4.4',
-                  isGrid: true,
-                ),
-                StoreProductCard(
-                  title: 'Grooming Essentials Kit',
-                  brand: 'QUTI Care',
-                  price: '\$49.99',
-                  rating: '4.7',
-                  badge: 'Popular',
-                  badgeColor: AppColors.primary,
-                  isGrid: true,
-                ),
-              ],
+            child: StreamBuilder(
+              stream: StoreRepository().streamItems(
+                type: StoreItemType.product,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final result = snapshot.data;
+                if (result == null) {
+                  return const _StoreEmptySection(
+                    message: 'No products added yet',
+                  );
+                }
+
+                return result.fold(
+                  (failure) => _StoreEmptySection(message: failure.message),
+                  (items) {
+                    if (items.isEmpty) {
+                      return const _StoreEmptySection(
+                        message: 'No products added yet',
+                      );
+                    }
+
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${items.length} products found',
+                                style: const TextStyle(
+                                  color: AppColors.textGrey,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.swap_vert,
+                                    size: 16,
+                                    color: AppColors.primary,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Sort',
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.65,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                ),
+                            itemCount: items.length,
+                            itemBuilder: (context, index) {
+                              final item = items[index];
+                              return StoreProductCard(
+                                title: item.title,
+                                brand: item.brand,
+                                price: item.formattedPrice,
+                                oldPrice: item.formattedOldPrice,
+                                rating: item.formattedRating,
+                                badge: item.badge,
+                                imageUrl: item.imageUrl,
+                                description: item.description,
+                                isGrid: true,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -679,6 +752,8 @@ class StoreProductCard extends StatelessWidget {
   final String? oldPrice;
   final String rating;
   final String? badge;
+  final String? imageUrl;
+  final String? description;
   final Color? badgeColor;
   final double? width;
   final bool isGrid;
@@ -691,6 +766,8 @@ class StoreProductCard extends StatelessWidget {
     this.oldPrice,
     required this.rating,
     this.badge,
+    this.imageUrl,
+    this.description,
     this.badgeColor,
     this.width,
     this.isGrid = false,
@@ -712,6 +789,8 @@ class StoreProductCard extends StatelessWidget {
             oldPrice: oldPrice,
             rating: rating,
             badge: badge,
+            imageUrl: imageUrl,
+            description: description,
           ),
         ),
       ),
@@ -746,47 +825,37 @@ class StoreProductCard extends StatelessWidget {
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
-              padding: const EdgeInsets.all(12),
+              clipBehavior: Clip.antiAlias,
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Align(
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: isGrid ? 76 : 86,
-                      height: isGrid ? 76 : 86,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _iconForProduct(title),
-                        color: foreground,
-                        size: isGrid ? 38 : 44,
-                      ),
-                    ),
-                  ),
+                  _buildProductImage(foreground),
                   if (badge != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: badgeColor ?? Colors.blueGrey,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        badge!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: badgeColor ?? Colors.blueGrey,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
                   Positioned(
-                    right: 0,
-                    bottom: 0,
+                    right: 12,
+                    bottom: 12,
                     child: Container(
                       width: 30,
                       height: 30,
@@ -868,6 +937,40 @@ class StoreProductCard extends StatelessWidget {
     );
   }
 
+  Widget _buildProductImage(Color foreground) {
+    final url = imageUrl;
+    if (url != null && url.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (context, url) => Center(
+          child: Icon(
+            _iconForProduct(title),
+            color: foreground,
+            size: isGrid ? 38 : 44,
+          ),
+        ),
+        errorWidget: (context, url, error) => Center(
+          child: Icon(
+            _iconForProduct(title),
+            color: foreground,
+            size: isGrid ? 38 : 44,
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: Icon(
+        _iconForProduct(title),
+        color: foreground,
+        size: isGrid ? 38 : 44,
+      ),
+    );
+  }
+
   IconData _iconForProduct(String title) {
     final normalized = title.toLowerCase();
     if (normalized.contains('beard') || normalized.contains('oil')) {
@@ -913,6 +1016,8 @@ class StoreProductDetailScreen extends StatefulWidget {
   final String? oldPrice;
   final String rating;
   final String? badge;
+  final String? imageUrl;
+  final String? description;
 
   const StoreProductDetailScreen({
     super.key,
@@ -922,6 +1027,8 @@ class StoreProductDetailScreen extends StatefulWidget {
     this.oldPrice,
     required this.rating,
     this.badge,
+    this.imageUrl,
+    this.description,
   });
 
   @override
@@ -993,6 +1100,37 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                         ),
                       ),
                     ),
+                  Center(
+                    child: Container(
+                      width: 210,
+                      height: 210,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: widget.imageUrl == null || widget.imageUrl!.isEmpty
+                          ? const Icon(
+                              Icons.shopping_bag_outlined,
+                              color: AppColors.primary,
+                              size: 82,
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: widget.imageUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Icon(
+                                Icons.shopping_bag_outlined,
+                                color: AppColors.primary,
+                                size: 82,
+                              ),
+                              errorWidget: (context, url, error) => const Icon(
+                                Icons.shopping_bag_outlined,
+                                color: AppColors.primary,
+                                size: 82,
+                              ),
+                            ),
+                    ),
+                  ),
                   // Carousel Dots
                   Padding(
                     padding: const EdgeInsets.only(bottom: 24.0),
@@ -1145,8 +1283,10 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Premium quality grooming product designed for the modern man. Made with natural ingredients for the best results. Suitable for all hair types.',
+                  Text(
+                    widget.description?.isNotEmpty == true
+                        ? widget.description!
+                        : 'Premium quality grooming product designed for the modern man. Made with natural ingredients for the best results. Suitable for all hair types.',
                     style: TextStyle(
                       color: AppColors.textGrey,
                       height: 1.5,

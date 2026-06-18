@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import ManageStoreItems from './ManageStoreItems';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -76,6 +77,7 @@ export default function AdminDashboard() {
         <Routes>
           <Route path="/" element={<AdminHome />} />
           <Route path="/barbers" element={<ManageBarbers />} />
+          <Route path="/store" element={<ManageStoreItems />} />
         </Routes>
       </main>
     </div>
