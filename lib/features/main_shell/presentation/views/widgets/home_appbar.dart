@@ -68,71 +68,10 @@ class HomeAppBar extends StatelessWidget {
                   },
                 ),
               ),
-
-              // Notification Icon with Badge
-              const _NotificationsBadgeIcon(),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Notification icon with unread count badge
-class _NotificationsBadgeIcon extends StatelessWidget {
-  const _NotificationsBadgeIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
-
-    // Base notification icon
-    final baseIcon = Container(
-      padding: EdgeInsets.all(8.w),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        Icons.notifications_outlined,
-        color: Colors.white,
-        size: 24.w,
-      ),
-    );
-
-    // If no user is logged in, show only the icon
-    if (uid == null) {
-      return baseIcon;
-    }
-
-    // Stream to listen for unread notifications
-    final unreadStream = FirebaseFirestore.instance
-        .collection('users/$uid/notifications')
-        .where('read', isEqualTo: false)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: unreadStream,
-      builder: (context, snapshot) {
-        final int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-
-        // If count is 0, return only the icon
-        if (count == 0) {
-          return baseIcon;
-        }
-
-        // If count > 0, show badge
-        return Badge(
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-          label: Text(
-            count > 99 ? '99+' : '$count',
-            style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.bold),
-          ),
-          child: baseIcon,
-        );
-      },
     );
   }
 }

@@ -181,18 +181,6 @@ class _HomeTab extends StatelessWidget {
     return Column(
       children: [
         _QuickServiceTile(
-          icon: Icons.content_cut,
-          iconBgColor: const Color(0xFFFBE9E7),
-          iconColor: Colors.deepOrangeAccent,
-          title: 'Join as Provider',
-          subtitle: 'Barbers & shop owners',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ProviderJoinScreen()),
-          ),
-        ),
-        SizedBox(height: 8.h),
-        _QuickServiceTile(
           icon: Icons.auto_awesome,
           iconBgColor: AppColors.primaryLight,
           iconColor: AppColors.primary,

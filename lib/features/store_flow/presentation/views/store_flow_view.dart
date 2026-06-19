@@ -248,19 +248,70 @@ class _StoreBannerSliderState extends State<StoreBannerSlider> {
 }
 
 class StoreCartItem {
+  final String productId;
   final String title;
   final String brand;
   final String price;
+  final double unitPrice;
   final String? imageUrl;
   int quantity;
 
   StoreCartItem({
+    required this.productId,
     required this.title,
     required this.brand,
     required this.price,
+    required this.unitPrice,
     this.imageUrl,
     this.quantity = 1,
   });
+
+  double get lineTotal => unitPrice * quantity;
+
+  Map<String, dynamic> toCartMap() {
+    return {
+      'productId': productId,
+      'quantity': quantity,
+      'productDetails': {
+        'title': title,
+        'brand': brand,
+        'price': unitPrice,
+        'imageUrl': imageUrl,
+      },
+    };
+  }
+
+  Map<String, dynamic> toOrderMap() {
+    return {
+      'productId': productId,
+      'title': title,
+      'brand': brand,
+      'unitPrice': unitPrice,
+      'quantity': quantity,
+      'lineTotal': lineTotal,
+      'imageUrl': imageUrl,
+    };
+  }
+}
+
+class StoreOrderDraft {
+  final String orderNumber;
+  final List<StoreCartItem> items;
+  final double subtotal;
+  final double deliveryFee;
+  final double total;
+  final DateTime createdAt;
+
+  const StoreOrderDraft({
+    required this.orderNumber,
+    required this.items,
+    required this.subtotal,
+    required this.deliveryFee,
+    required this.total,
+    required this.createdAt,
+  });
+
+  int get itemCount => items.fold<int>(0, (total, item) => total + item.quantity);
 }
 
 class StoreCartController {
@@ -268,8 +319,10 @@ class StoreCartController {
 
   static final ValueNotifier<List<StoreCartItem>> items =
       ValueNotifier<List<StoreCartItem>>([]);
+  static StoreOrderDraft? lastOrder;
 
   static void addItem({
+    String productId = '',
     required String title,
     required String brand,
     required String price,
@@ -277,8 +330,11 @@ class StoreCartController {
     int quantity = 1,
   }) {
     final updated = List<StoreCartItem>.from(items.value);
+    final itemId = productId.isNotEmpty
+        ? productId
+        : '${brand}_$title'.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     final index = updated.indexWhere(
-      (item) => item.title == title && item.brand == brand,
+      (item) => item.productId == itemId,
     );
 
     if (index >= 0) {
@@ -286,9 +342,11 @@ class StoreCartController {
     } else {
       updated.add(
         StoreCartItem(
+          productId: itemId,
           title: title,
           brand: brand,
           price: price,
+          unitPrice: priceValue(price),
           imageUrl: imageUrl,
           quantity: quantity,
         ),
@@ -296,12 +354,13 @@ class StoreCartController {
     }
 
     items.value = updated;
+    _syncCart();
   }
 
   static void updateQuantity(StoreCartItem item, int quantity) {
     final updated = List<StoreCartItem>.from(items.value);
     final index = updated.indexWhere(
-      (cartItem) => cartItem.title == item.title && cartItem.brand == item.brand,
+      (cartItem) => cartItem.productId == item.productId,
     );
 
     if (index < 0) return;
@@ -312,6 +371,23 @@ class StoreCartController {
     }
 
     items.value = updated;
+    _syncCart();
+  }
+
+  static void clear() {
+    items.value = [];
+    _syncCart();
+  }
+
+  static Future<void> _syncCart() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('carts').doc(user.uid).set({
+      'userId': user.uid,
+      'items': items.value.map((item) => item.toCartMap()).toList(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true));
   }
 
   static double priceValue(String price) {
@@ -330,8 +406,55 @@ class StoreCartController {
   static double subtotal(List<StoreCartItem> cartItems) {
     return cartItems.fold<double>(
       0,
-      (total, item) => total + priceValue(item.price) * item.quantity,
+      (total, item) => total + item.lineTotal,
     );
+  }
+
+  static Future<StoreOrderDraft> placeOrder({required double deliveryFee}) async {
+    final orderItems = List<StoreCartItem>.from(items.value);
+    final orderSubtotal = subtotal(orderItems);
+    final orderDeliveryFee = orderItems.isEmpty ? 0.0 : deliveryFee;
+    final orderTotal = orderSubtotal + orderDeliveryFee;
+    final now = DateTime.now();
+    final orderNumber = 'QUTI-${now.millisecondsSinceEpoch}';
+    final draft = StoreOrderDraft(
+      orderNumber: orderNumber,
+      items: orderItems,
+      subtotal: orderSubtotal,
+      deliveryFee: orderDeliveryFee,
+      total: orderTotal,
+      createdAt: now,
+    );
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final batch = FirebaseFirestore.instance.batch();
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderNumber);
+      final cartRef = FirebaseFirestore.instance.collection('carts').doc(user.uid);
+
+      batch.set(orderRef, {
+        'orderNumber': orderNumber,
+        'userId': user.uid,
+        'items': orderItems.map((item) => item.toOrderMap()).toList(),
+        'subtotal': orderSubtotal,
+        'deliveryFee': orderDeliveryFee,
+        'total': orderTotal,
+        'currency': 'EGP',
+        'paymentMethod': 'cash_on_delivery',
+        'status': 'placed',
+        'createdAt': now.toIso8601String(),
+      });
+      batch.set(cartRef, {
+        'userId': user.uid,
+        'items': [],
+        'updatedAt': now.toIso8601String(),
+      }, SetOptions(merge: true));
+      await batch.commit();
+    }
+
+    lastOrder = draft;
+    items.value = [];
+    return draft;
   }
 }
 
@@ -934,6 +1057,7 @@ class StoreProductCard extends StatelessWidget {
 
     void addToCart() {
       StoreCartController.addItem(
+        productId: productId,
         title: title,
         brand: brand,
         price: price,
@@ -1570,9 +1694,10 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
         ),
         child: SafeArea(
           top: false,
-            child: ElevatedButton.icon(
+          child: ElevatedButton.icon(
             onPressed: () {
               StoreCartController.addItem(
+                productId: widget.productId,
                 title: widget.title,
                 brand: widget.brand,
                 price: widget.price,
@@ -1753,28 +1878,34 @@ class StoreCartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('My Cart'),
-        centerTitle: true,
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('app_settings')
-            .doc('store')
-            .snapshots(),
-        builder: (context, settingsSnapshot) {
-          final deliveryFee = StoreCartController.priceValue(
-            settingsSnapshot.data?.data()?['deliveryFeeEgp']?.toString() ?? '0',
-          );
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('app_settings')
+          .doc('store')
+          .snapshots(),
+      builder: (context, settingsSnapshot) {
+        final configuredDeliveryFee = StoreCartController.priceValue(
+          settingsSnapshot.data?.data()?['deliveryFeeEgp']?.toString() ?? '0',
+        );
 
-          return ValueListenableBuilder<List<StoreCartItem>>(
-            valueListenable: StoreCartController.items,
-            builder: (context, cartItems, _) {
+        return ValueListenableBuilder<List<StoreCartItem>>(
+          valueListenable: StoreCartController.items,
+          builder: (context, cartItems, _) {
+            final subtotal = StoreCartController.subtotal(cartItems);
+            final deliveryFee = cartItems.isEmpty ? 0.0 : configuredDeliveryFee;
+            final total = subtotal + deliveryFee;
+
+            return Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                title: const Text('My Cart'),
+                centerTitle: true,
+              ),
+              body: Builder(
+                builder: (context) {
           if (cartItems.isEmpty) {
             return const Center(
               child: Padding(
@@ -1790,9 +1921,6 @@ class StoreCartScreen extends StatelessWidget {
               ),
             );
           }
-
-          final subtotal = StoreCartController.subtotal(cartItems);
-          final total = subtotal + deliveryFee;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -1812,16 +1940,20 @@ class StoreCartScreen extends StatelessWidget {
             ),
           );
         },
-          );
-        },
-      ),
-      bottomSheet: PrimaryBottomButton(
-        text: 'Proceed to Checkout',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const StoreCheckoutScreen()),
-        ),
-      ),
+              ),
+              bottomSheet: PrimaryBottomButton(
+                text: 'Proceed to Checkout',
+                onPressed: cartItems.isEmpty
+                    ? null
+                    : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const StoreCheckoutScreen()),
+                        ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2169,10 +2301,18 @@ class StoreCheckoutScreen extends StatelessWidget {
                 text: 'Place Order',
                 onPressed: cartItems.isEmpty
                     ? null
-                    : () => Navigator.push(
+                    : () async {
+                        final order = await StoreCartController.placeOrder(
+                          deliveryFee: deliveryFee,
+                        );
+                        if (!context.mounted) return;
+                        Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const StoreOrderSuccessScreen()),
-                        ),
+                          MaterialPageRoute(
+                            builder: (_) => StoreOrderSuccessScreen(order: order),
+                          ),
+                        );
+                      },
               ),
             );
           },
@@ -2496,10 +2636,16 @@ class StoreDeliveryDetailsScreen extends StatelessWidget {
 // 7. ORDER SUCCESS SCREEN
 // ==========================================
 class StoreOrderSuccessScreen extends StatelessWidget {
-  const StoreOrderSuccessScreen({super.key});
+  final StoreOrderDraft? order;
+
+  const StoreOrderSuccessScreen({super.key, this.order});
+
+  StoreOrderDraft? get _currentOrder => order ?? StoreCartController.lastOrder;
 
   @override
   Widget build(BuildContext context) {
+    final currentOrder = _currentOrder;
+
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
@@ -2561,18 +2707,18 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                           const SizedBox(height: 16),
                           _buildDetailRow(
                             'Order Number',
-                            'ORD-2026-1847',
+                            currentOrder?.orderNumber ?? 'Pending',
                             isBoldValue: true,
                           ),
                           _buildDetailRow(
                             'Estimated Delivery',
-                            'Mar 14, 2026',
+                            _estimatedDelivery(currentOrder?.createdAt),
                             isBoldValue: true,
                           ),
                           const Divider(height: 24),
                           _buildDetailRow(
                             'Total',
-                            '130.65 EGP',
+                            StoreCartController.formatEgp(currentOrder?.total ?? 0),
                             isBoldValue: true,
                             valueColor: AppColors.primary,
                           ),
@@ -2584,7 +2730,7 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                       onPressed: () => Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const StoreOrderTrackingScreen(),
+                          builder: (_) => StoreOrderTrackingScreen(order: currentOrder),
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -2647,6 +2793,12 @@ class StoreOrderSuccessScreen extends StatelessWidget {
     );
   }
 
+  String _estimatedDelivery(DateTime? createdAt) {
+    final base = createdAt ?? DateTime.now();
+    final estimate = base.add(const Duration(days: 4));
+    return '${estimate.year}-${estimate.month.toString().padLeft(2, '0')}-${estimate.day.toString().padLeft(2, '0')}';
+  }
+
   Widget _buildDetailRow(
     String label,
     String value, {
@@ -2680,10 +2832,18 @@ class StoreOrderSuccessScreen extends StatelessWidget {
 // 8. ORDER TRACKING SCREEN
 // ==========================================
 class StoreOrderTrackingScreen extends StatelessWidget {
-  const StoreOrderTrackingScreen({super.key});
+  final StoreOrderDraft? order;
+
+  const StoreOrderTrackingScreen({super.key, this.order});
+
+  StoreOrderDraft? get _currentOrder => order ?? StoreCartController.lastOrder;
 
   @override
   Widget build(BuildContext context) {
+    final currentOrder = _currentOrder;
+    final orderDate = currentOrder?.createdAt ?? DateTime.now();
+    final dateLabel = '${orderDate.year}-${orderDate.month.toString().padLeft(2, '0')}-${orderDate.day.toString().padLeft(2, '0')}';
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -2701,20 +2861,20 @@ class StoreOrderTrackingScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ORD-2024-1847',
-                      style: TextStyle(
+                      currentOrder?.orderNumber ?? 'Pending Order',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '2 items · Mar 8, 2026',
-                      style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                      '${currentOrder?.itemCount ?? 0} items · $dateLabel',
+                      style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
                     ),
                   ],
                 ),
@@ -2757,27 +2917,27 @@ class StoreOrderTrackingScreen extends StatelessWidget {
             _buildTimelineItem(
               Icons.check_circle_outline,
               'Order Placed',
-              'Mar 8, 2026 · 10:30 AM',
+              dateLabel,
               true,
               isFirst: true,
             ),
             _buildTimelineItem(
               Icons.inventory_2_outlined,
               'Processing',
-              'Mar 8, 2026 · 02:15 PM',
+              dateLabel,
               true,
             ),
             _buildTimelineItem(
               Icons.local_shipping_outlined,
               'Shipped',
-              'Mar 9, 2026 · 09:00 AM',
+              'Preparing your order',
               true,
               isActive: true,
             ),
             _buildTimelineItem(
               Icons.home_outlined,
               'Out for Delivery',
-              'Expected Mar 11, 2026',
+              currentOrder == null ? '' : 'Expected within 3-5 days',
               false,
             ),
             _buildTimelineItem(
@@ -2801,25 +2961,24 @@ class StoreOrderTrackingScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _buildOrderedItemRow(
-                    'Premium Beard Oil',
-                    'Qty: 1',
-                    '24.99 EGP',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildOrderedItemRow(
-                    'Professional Trimmer',
-                    'Qty: 1',
-                    '89.99 EGP',
+                  ...(currentOrder?.items ?? const <StoreCartItem>[]).map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildOrderedItemRow(
+                        item.title,
+                        'Qty: ${item.quantity}',
+                        StoreCartController.formatEgp(item.lineTotal),
+                      ),
+                    ),
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Divider(),
                   ),
-                  _buildPriceRow('Subtotal', '114.98 EGP'),
-                  _buildPriceRow('Delivery + Tax', '15.67 EGP'),
+                  _buildPriceRow('Subtotal', StoreCartController.formatEgp(currentOrder?.subtotal ?? 0)),
+                  _buildPriceRow('Delivery', StoreCartController.formatEgp(currentOrder?.deliveryFee ?? 0)),
                   const SizedBox(height: 8),
-                  _buildPriceRow('Total', '130.65 EGP', isTotal: true),
+                  _buildPriceRow('Total', StoreCartController.formatEgp(currentOrder?.total ?? 0), isTotal: true),
                 ],
               ),
             ),
