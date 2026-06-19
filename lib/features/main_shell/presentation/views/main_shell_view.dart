@@ -5,19 +5,17 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import 'package:app/core/services/get_it_service.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
-import 'package:app/features/booking_type/presentation/views/booking_type_view.dart';
-import 'package:app/features/womens_flow/presentation/views/womens_flow_view.dart';
 import 'package:app/features/ai_flow/presentation/views/ai_flow_view.dart';
+import 'package:app/features/store_flow/data/models/store_item_model.dart';
+import 'package:app/features/store_flow/data/repos/store_repository.dart';
 import 'package:app/features/store_flow/presentation/views/store_flow_view.dart';
 import 'package:app/features/provider_flow/presentation/views/provider_flow_view.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/home_appbar.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/banner_slider.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/custom_bottom_nav.dart';
 import 'package:app/features/profile/presentation/cubit/profile_provider.dart';
-import 'package:app/features/auth/domain/repos/auth_repo.dart';
-import 'package:app/features/auth/presentation/views/sign_in_view.dart';
+import 'package:app/features/profile/presentation/views/profile_view.dart';
 import 'package:app/features/chat/presentation/views/chat_room_view.dart';
 import 'package:app/features/chat/presentation/views/chats_list_view.dart';
 
@@ -43,7 +41,7 @@ class _MainShellState extends State<MainShell> {
     StoreHomeScreen(embedded: true),
     _BookingsTab(),
     ChatsListView(),
-    _ProfileTab(),
+    ProfileView(),
   ];
 
   @override
@@ -86,14 +84,17 @@ class _MainShellState extends State<MainShell> {
         stream: currentUser == null
             ? const Stream.empty()
             : FirebaseFirestore.instance
-                .collection('chats')
-                .where('customerId', isEqualTo: currentUser.uid)
-                .snapshots(),
+                  .collection('chats')
+                  .where('customerId', isEqualTo: currentUser.uid)
+                  .snapshots(),
         builder: (context, snapshot) {
-          final unreadMessagesCount = snapshot.data?.docs.fold<int>(
+          final unreadMessagesCount =
+              snapshot.data?.docs.fold<int>(
                 0,
                 (total, chatDoc) =>
-                    total + ((chatDoc.data()['unreadByCustomer'] as num?)?.toInt() ?? 0),
+                    total +
+                    ((chatDoc.data()['unreadByCustomer'] as num?)?.toInt() ??
+                        0),
               ) ??
               0;
 
@@ -127,15 +128,6 @@ class _HomeTab extends StatelessWidget {
           const BannerSlider(),
           SizedBox(height: 16.h),
 
-          // ── Who are you booking for? ──
-          _buildSectionHeader(
-            title: 'Who are you booking for?',
-            showSeeAll: false,
-          ),
-          SizedBox(height: 12.h),
-          _buildBookingCards(context),
-          SizedBox(height: 24.h),
-
           // ── My Bookings ──
           const _MyBookingsSection(),
           SizedBox(height: 24.h),
@@ -146,37 +138,6 @@ class _HomeTab extends StatelessWidget {
           _buildQuickServices(context),
           SizedBox(height: 24.h),
 
-          // ── Featured Packages ──
-          _buildSectionHeader(
-            title: 'Featured Packages',
-            showSeeAll: true,
-            onSeeAll: () {},
-          ),
-          SizedBox(height: 12.h),
-          _buildPackageCard(
-            icon: '✨',
-            title: 'Bridal Glow Package',
-            subtitle: '3 hours · 4 services',
-            price: '\$199',
-            accentColor: const Color(0xFFFFF3E0),
-          ),
-          SizedBox(height: 10.h),
-          _buildPackageCard(
-            icon: '🌿',
-            title: 'Relax & Refresh',
-            subtitle: '2 hours · 3 services',
-            price: '\$129',
-            accentColor: const Color(0xFFE8F5E9),
-          ),
-          SizedBox(height: 10.h),
-          _buildPackageCard(
-            icon: '✨',
-            title: 'Color & Style Combo',
-            subtitle: '2.5 hours · 3 services',
-            price: '\$159',
-            accentColor: const Color(0xFFF3E5F5),
-          ),
-          SizedBox(height: 24.h),
         ],
       ),
     );
@@ -215,62 +176,6 @@ class _HomeTab extends StatelessWidget {
     );
   }
 
-  // ── Booking Cards (Men / Women / Kids) ──
-  Widget _buildBookingCards(BuildContext context) {
-    return SizedBox(
-      height: 110.h,
-      child: Row(
-        children: [
-          Expanded(
-            child: _BookingCard(
-              icon: '💈',
-              title: 'Men',
-              subtitle: 'Barbershops',
-              gradient: const LinearGradient(
-                colors: [Color(0xFF438587), Color(0xFF5BA3A5)],
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BookingTypeScreen()),
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: _BookingCard(
-              icon: '💅',
-              title: 'Women',
-              subtitle: 'Salons & Beauty',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFE91E63), Color(0xFFF06292)],
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BeautyHomeScreen()),
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: _BookingCard(
-              icon: '👦',
-              title: 'Kids',
-              subtitle: 'Friendly Cuts',
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
-              ),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Kids services coming soon')),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── Quick Services ──
   Widget _buildQuickServices(BuildContext context) {
     return Column(
@@ -302,143 +207,6 @@ class _HomeTab extends StatelessWidget {
     );
   }
 
-  // ── Package Card ──
-  Widget _buildPackageCard({
-    required String icon,
-    required String title,
-    required String subtitle,
-    required String price,
-    required Color accentColor,
-  }) {
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.borderGrey.withOpacity(0.4)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44.w,
-            height: 44.w,
-            decoration: BoxDecoration(
-              color: accentColor,
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Center(
-              child: Text(icon, style: const TextStyle(fontSize: 20)),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14.sp,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  subtitle,
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 12.sp),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Text(
-              price,
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 14.sp,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Booking Card Widget ──
-class _BookingCard extends StatelessWidget {
-  const _BookingCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.gradient,
-    required this.onTap,
-  });
-
-  final String icon;
-  final String title;
-  final String subtitle;
-  final LinearGradient gradient;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(16.r),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.colors.first.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: EdgeInsets.all(14.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 24)),
-            const Spacer(),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11.sp,
-                color: Colors.white.withOpacity(0.85),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Quick Service Tile Widget ──
@@ -778,7 +546,7 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => _handleCancelBooking(booking),
+                onPressed: () => _handleCancelPendingBooking(booking),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.dangerRed,
                   foregroundColor: Colors.white,
@@ -792,7 +560,7 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
                   ),
                 ),
                 child: Text(
-                  'Cancel Booking',
+                  'Cancel Request',
                   style: TextStyle(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w700,
@@ -804,6 +572,108 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleCancelPendingBooking(Map<String, dynamic> booking) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    final userProfile = context.read<ProfileProvider>().currentUser;
+
+    final status = booking['status']?.toString().toLowerCase() ?? '';
+    if (status != 'pending') return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Request'),
+        content: const Text('Are you sure you want to cancel this booking request?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.dangerRed),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final bookingId = booking['id'] as String?;
+      final barberId = booking['barberId'] as String?;
+      if (bookingId == null || barberId == null) return;
+
+      final dateStr = _formatDate(booking['dateTime']);
+      final timeStr = _formatTime(booking['dateTime']);
+      final timestamp = FieldValue.serverTimestamp();
+
+      final customerName =
+          userProfile?.name ?? currentUser.displayName ?? 'Customer';
+      final chatId = '${currentUser.uid}_$barberId';
+      final cancellationMessage =
+          '❌ العميل ألغى طلب الحجز يوم $dateStr الساعة $timeStr';
+
+      final batch = FirebaseFirestore.instance.batch();
+      final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+      final messageRef = chatRef.collection('messages').doc();
+
+      batch.update(_firestore.collection('appointments').doc(bookingId), {
+        'status': 'cancelled',
+        'cancelledBy': 'customer',
+        'cancelledAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      batch.set(chatRef, {
+        'customerId': currentUser.uid,
+        'customerName': customerName,
+        'barberId': barberId,
+        'barberName': booking['barberName'] ?? 'Your Barber',
+        'lastMessage': cancellationMessage,
+        'lastMessageTime': timestamp,
+        'customerOnline': true,
+        'customerLastSeen': timestamp,
+        'unreadByBarber': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      batch.set(messageRef, {
+        'senderId': 'system',
+        'senderName': 'System',
+        'message': cancellationMessage,
+        'timestamp': timestamp,
+        'type': 'system_cancellation',
+        'appointmentId': bookingId,
+        'slotId': bookingId,
+        'dateTime': booking['dateTime'],
+        'cancelledBy': 'customer',
+      });
+
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking request cancelled'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel request: $e'),
+            backgroundColor: AppColors.dangerRed,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildInfoState({
@@ -857,96 +727,6 @@ class _MyBookingsSectionState extends State<_MyBookingsSection> {
         ),
       ),
     );
-  }
-
-  Future<void> _handleCancelBooking(Map<String, dynamic> booking) async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Booking'),
-        content: const Text('Are you sure you want to cancel this booking?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.dangerRed),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final bookingId = booking['id'] as String?;
-      final barberId = booking['barberId'] as String?;
-      if (bookingId == null || barberId == null) return;
-
-      final dateStr = _formatDate(booking['dateTime']);
-      final timeStr = _formatTime(booking['dateTime']);
-
-      await _firestore.collection('appointments').doc(bookingId).update({
-        'status': 'cancelled',
-        'updatedAt': DateTime.now().toIso8601String(),
-      });
-
-      if (!mounted) return;
-
-      final userProfile = context.read<ProfileProvider>().currentUser;
-      final customerName =
-          userProfile?.name ?? currentUser.displayName ?? 'Customer';
-      final chatId = '${currentUser.uid}_$barberId';
-      final timestamp = FieldValue.serverTimestamp();
-      final cancellationMessage =
-          '❌ Booking cancelled for: $dateStr at $timeStr';
-
-      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
-        'customerId': currentUser.uid,
-        'customerName': customerName,
-        'barberId': barberId,
-        'barberName': booking['barberName'] ?? 'Your Barber',
-        'lastMessage': cancellationMessage,
-        'lastMessageTime': timestamp,
-        'unreadByBarber': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-
-      await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .add({
-            'senderId': 'system',
-            'senderName': 'System',
-            'message': cancellationMessage,
-            'timestamp': timestamp,
-            'type': 'system_cancellation',
-          });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Booking cancelled successfully'),
-            backgroundColor: AppColors.successGreen,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to cancel booking: $e'),
-            backgroundColor: AppColors.dangerRed,
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -1599,6 +1379,115 @@ class _BookingsTabState extends State<_BookingsTab> {
     );
   }
 
+  Widget _buildBarberCatalog() {
+    final barberId = _selectedBarberId;
+    if (barberId == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStoreItemsStrip(
+          title: 'Offers',
+          type: StoreItemType.offer,
+          emptyMessage: 'No offers for this barber yet',
+        ),
+        _buildStoreItemsStrip(
+          title: 'Products',
+          type: StoreItemType.product,
+          emptyMessage: 'No products for this barber yet',
+        ),
+        _buildStoreItemsStrip(
+          title: 'Beauty Services',
+          type: StoreItemType.service,
+          emptyMessage: 'No beauty services for this barber yet',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStoreItemsStrip({
+    required String title,
+    required StoreItemType type,
+    required String emptyMessage,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(
+          title,
+          'From ${_selectedBarberName ?? 'this barber'}',
+        ),
+        StreamBuilder(
+          stream: StoreRepository().streamItems(
+            type: type,
+            barberId: _selectedBarberId,
+            fallbackToGlobalItems: false,
+          ),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return SizedBox(
+                height: 230.h,
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final result = snapshot.data;
+            if (result == null) return _buildCatalogEmpty(emptyMessage);
+
+            return result.fold(
+              (failure) => _buildCatalogEmpty(failure.message),
+              (items) {
+                if (items.isEmpty) return _buildCatalogEmpty(emptyMessage);
+
+                return SizedBox(
+                  height: 250.h,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.symmetric(horizontal: 20.w),
+                    itemCount: items.length,
+                    separatorBuilder: (context, index) => SizedBox(width: 16.w),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return StoreProductCard(
+                        title: item.title,
+                        brand: item.brand,
+                        price: item.formattedPrice,
+                        oldPrice: item.formattedOldPrice,
+                        rating: item.formattedRating,
+                        badge: item.badge,
+                        imageUrl: item.imageUrl,
+                        description: item.description,
+                        width: 160.w,
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCatalogEmpty(String message) {
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 22.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: AppColors.borderGrey.withOpacity(0.45)),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(color: AppColors.textGrey, fontSize: 13.sp),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
   Future<void> _handleConfirmBooking() async {
     if (_selectedSlot == null) return;
 
@@ -1617,50 +1506,56 @@ class _BookingsTabState extends State<_BookingsTab> {
       final customerName =
           userProfile?.name ?? currentUser.displayName ?? 'App User';
 
-      await _firestore
-          .collection('appointments')
-          .doc(_selectedSlot!['id'])
-          .update({
-            'status': 'pending',
-            'customerId': currentUser.uid,
-            'customerName': customerName,
-            'customerPhone': '',
-            'serviceName': 'App Booking',
-            'price': 0,
-            'updatedAt': DateTime.now().toIso8601String(),
-          });
-
       final slotWithId = Map<String, dynamic>.from(_selectedSlot!);
       final barberId = _selectedBarberId ?? '';
 
       // Send automated message
       final dateStr = _formatDate(slotWithId['dateTime']);
       final timeStr = _formatTime(slotWithId['dateTime']);
-      final messageText = 'أرغب في تأكيد حجز يوم $dateStr الساعة $timeStr';
+      final messageText =
+          'أرغب في تأكيد حجز يوم $dateStr الساعة $timeStr';
       final chatId = '${currentUser.uid}_$barberId';
       final timestamp = FieldValue.serverTimestamp();
 
-      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+      final batch = FirebaseFirestore.instance.batch();
+      final appointmentRef = _firestore.collection('appointments').doc(_selectedSlot!['id']);
+      final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+      final messageRef = chatRef.collection('messages').doc();
+
+      batch.update(appointmentRef, {
+        'status': 'pending',
+        'customerId': currentUser.uid,
+        'customerName': customerName,
+        'customerPhone': '',
+        'serviceName': 'App Booking',
+        'price': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      batch.set(chatRef, {
         'customerId': currentUser.uid,
         'customerName': customerName,
         'barberId': barberId,
         'barberName': _selectedBarberName ?? 'Your Barber',
         'lastMessage': messageText,
         'lastMessageTime': timestamp,
+        'customerOnline': true,
+        'customerLastSeen': timestamp,
         'unreadByBarber': FieldValue.increment(1),
       }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .add({
-            'senderId': currentUser.uid,
-            'senderName': customerName,
-            'message': messageText,
-            'timestamp': timestamp,
-            'type': 'text',
-          });
+      batch.set(messageRef, {
+        'senderId': currentUser.uid,
+        'senderName': customerName,
+        'message': messageText,
+        'timestamp': timestamp,
+        'type': 'booking_request',
+        'appointmentId': slotWithId['id'],
+        'slotId': slotWithId['id'],
+        'dateTime': slotWithId['dateTime'],
+      });
+
+      await batch.commit();
 
       if (mounted) {
         Navigator.pushNamed(
@@ -1678,9 +1573,9 @@ class _BookingsTabState extends State<_BookingsTab> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to request booking: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to request booking: $e')),
+        );
       }
     } finally {
       if (mounted) {
@@ -1741,215 +1636,10 @@ class _BookingsTabState extends State<_BookingsTab> {
               _buildBarbersList(),
               if (_selectedBarberId != null) _buildTimeSlots(),
               if (_selectedBarberId != null) _buildConfirmButton(),
+              if (_selectedBarberId != null) _buildBarberCatalog(),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ProfileTab extends StatelessWidget {
-  const _ProfileTab();
-
-  Future<void> _signOut(BuildContext context) async {
-    // Show confirmation dialog
-    final shouldSignOut = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldSignOut == true && context.mounted) {
-      // Sign out
-      final authRepo = getIt<AuthRepo>();
-      await authRepo.signOut();
-
-      // Clear profile provider
-      if (context.mounted) {
-        context.read<ProfileProvider>().clearUser();
-
-        // Navigate to sign in
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          SignInView.routeName,
-          (route) => false,
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          children: [
-            SizedBox(height: 20.h),
-            // Profile Header
-            Consumer<ProfileProvider>(
-              builder: (context, provider, child) {
-                final user = provider.currentUser;
-                return Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 50.r,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      backgroundImage: user?.photoUrl != null
-                          ? NetworkImage(user!.photoUrl!)
-                          : null,
-                      child: user?.photoUrl == null
-                          ? Icon(
-                              Icons.person,
-                              size: 50.w,
-                              color: AppColors.primary,
-                            )
-                          : null,
-                    ),
-                    SizedBox(height: 16.h),
-                    Text(
-                      user?.name ?? 'Guest User',
-                      style: TextStyle(
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      user?.email ?? '',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textGrey,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            SizedBox(height: 32.h),
-
-            // Profile Options
-            _buildProfileOption(
-              icon: Icons.person_outline,
-              title: 'Edit Profile',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Edit Profile coming soon')),
-                );
-              },
-            ),
-            _buildProfileOption(
-              icon: Icons.notifications_outlined,
-              title: 'Notifications',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Notifications coming soon')),
-                );
-              },
-            ),
-            _buildProfileOption(
-              icon: Icons.favorite_outline,
-              title: 'Favorites',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Favorites coming soon')),
-                );
-              },
-            ),
-            _buildProfileOption(
-              icon: Icons.settings_outlined,
-              title: 'Settings',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Settings coming soon')),
-                );
-              },
-            ),
-            _buildProfileOption(
-              icon: Icons.help_outline,
-              title: 'Help & Support',
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Help & Support coming soon')),
-                );
-              },
-            ),
-            SizedBox(height: 16.h),
-
-            // Sign Out Button
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 12.h),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-              child: ListTile(
-                leading: Icon(Icons.logout, color: Colors.red, size: 24.w),
-                title: const Text(
-                  'Sign Out',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.chevron_right,
-                  color: Colors.red,
-                  size: 20.w,
-                ),
-                onTap: () => _signOut(context),
-              ),
-            ),
-            SizedBox(height: 32.h),
-
-            // App Version
-            Text(
-              'Version 1.0.0',
-              style: TextStyle(fontSize: 12.sp, color: AppColors.textGrey),
-            ),
-            SizedBox(height: 16.h),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileOption({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 8.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppColors.borderGrey),
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: AppColors.primary, size: 24),
-        title: Text(title),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: AppColors.textGrey,
-          size: 20,
-        ),
-        onTap: onTap,
       ),
     );
   }

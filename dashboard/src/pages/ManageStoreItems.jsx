@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
-import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Package, Plus, Power, Trash2 } from 'lucide-react';
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Package, Plus, Power, Trash2, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
+import { useAuth } from '../App';
 import { db } from '../firebase';
 import { getStorageErrorMessage, productImagesBucket, supabase } from '../supabase';
 
@@ -14,7 +15,6 @@ const initialForm = {
   type: 'product',
   title: '',
   brand: 'QUTI Store',
-  category: 'All',
   description: '',
   price: '',
   oldPrice: '',
@@ -22,19 +22,31 @@ const initialForm = {
   badge: '',
 };
 
-export default function ManageStoreItems() {
+export default function ManageStoreItems({ ownerScope = 'admin' }) {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [imageOffsetX, setImageOffsetX] = useState(0);
+  const [imageOffsetY, setImageOffsetY] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const isBarberStore = ownerScope === 'barber';
 
   useEffect(() => {
+    if (isBarberStore && !user) return;
+
+    const itemsQuery = isBarberStore
+      ? query(collection(db, 'store_items'), where('barberId', '==', user.uid))
+      : collection(db, 'store_items');
+
     const unsubscribe = onSnapshot(
-      collection(db, 'store_items'),
+      itemsQuery,
       (snapshot) => {
         const nextItems = snapshot.docs.map((itemDoc) => ({
           id: itemDoc.id,
@@ -53,7 +65,7 @@ export default function ManageStoreItems() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isBarberStore, user]);
 
   const counts = useMemo(() => {
     return items.reduce(
@@ -73,6 +85,10 @@ export default function ManageStoreItems() {
 
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setZoomLevel(1);
+    setRotation(0);
+    setImageOffsetX(0);
+    setImageOffsetY(0);
   };
 
   const handleSubmit = async (event) => {
@@ -81,7 +97,7 @@ export default function ManageStoreItems() {
     setSuccess('');
 
     if (!supabase) {
-      setError('أضف VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY في Environment Variables على Vercel.');
+      setError('تعذر تهيئة Supabase. راجع VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY أو إعدادات fallback في dashboard/src/supabase.js.');
       return;
     }
 
@@ -93,16 +109,23 @@ export default function ManageStoreItems() {
     setSaving(true);
 
     try {
+      const uploadFile = await createEditedImageFile({
+        file: imageFile,
+        zoomLevel,
+        rotation,
+        offsetX: imageOffsetX,
+        offsetY: imageOffsetY,
+      });
       const itemRef = doc(collection(db, 'store_items'));
-      const extension = imageFile.name.split('.').pop() || 'jpg';
+      const extension = uploadFile.name.split('.').pop() || 'jpg';
       const storagePath = `${itemRef.id}/${Date.now()}_store_item.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from(productImagesBucket)
-        .upload(storagePath, imageFile, {
+        .upload(storagePath, uploadFile, {
           cacheControl: '3600',
           upsert: true,
-          contentType: imageFile.type,
+          contentType: uploadFile.type,
         });
 
       if (uploadError) throw uploadError;
@@ -113,7 +136,7 @@ export default function ManageStoreItems() {
       await setDoc(itemRef, {
         title: form.title.trim(),
         brand: form.brand.trim() || 'QUTI Store',
-        category: form.category.trim() || 'All',
+        category: 'All',
         description: form.description.trim(),
         price: Number(form.price),
         oldPrice: form.oldPrice ? Number(form.oldPrice) : null,
@@ -121,6 +144,8 @@ export default function ManageStoreItems() {
         badge: form.badge.trim() || null,
         imageUrl: data.publicUrl,
         type: form.type,
+        ownerType: isBarberStore ? 'barber' : 'admin',
+        barberId: isBarberStore ? user.uid : '',
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -129,6 +154,10 @@ export default function ManageStoreItems() {
       setForm(initialForm);
       setImageFile(null);
       setImagePreview('');
+      setZoomLevel(1);
+      setRotation(0);
+      setImageOffsetX(0);
+      setImageOffsetY(0);
       setSuccess('تمت إضافة العنصر ورفعه على Supabase بنجاح.');
     } catch (err) {
       console.error('Error saving store item:', err);
@@ -154,8 +183,12 @@ export default function ManageStoreItems() {
     <div className="space-y-8 animate-fade-in" dir="rtl">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-white">إدارة متجر QUTI</h1>
-          <p className="text-charcoal-400 mt-1 text-sm">إضافة المنتجات والعروض وخدمات التجميل التي تظهر مباشرة داخل تطبيق Flutter.</p>
+          <h1 className="text-3xl font-black text-white">{isBarberStore ? 'متجري وعروضي' : 'إدارة متجر QUTI'}</h1>
+          <p className="text-charcoal-400 mt-1 text-sm">
+            {isBarberStore
+              ? 'إضافة منتجاتك وعروضك وخدمات التجميل الخاصة بك فقط لتظهر للعملاء عند اختيارك في الحجز.'
+              : 'إضافة المنتجات والعروض وخدمات التجميل التي تظهر مباشرة داخل تطبيق Flutter.'}
+          </p>
         </div>
         <div className="grid grid-cols-3 gap-3 min-w-[280px]">
           <CounterCard label="منتجات" value={counts.product} />
@@ -179,13 +212,88 @@ export default function ManageStoreItems() {
             </div>
             <div>
               <h2 className="font-bold text-white">إضافة عنصر جديد</h2>
-              <p className="text-xs text-charcoal-500">الصورة ترفع على Supabase والرابط يحفظ في Firebase.</p>
+              <p className="text-xs text-charcoal-500">الصورة ترفع على Supabase والعنصر يحفظ مربوطاً بصاحب الحساب.</p>
             </div>
           </div>
 
           <label className="block cursor-pointer rounded-2xl border border-dashed border-charcoal-700 bg-charcoal-900/50 hover:border-gold-500/50 transition overflow-hidden">
             {imagePreview ? (
-              <img src={imagePreview} alt="Preview" className="h-48 w-full object-cover" />
+              <div className="relative">
+                <div className="h-48 w-full overflow-hidden flex items-center justify-center bg-charcoal-800">
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview" 
+                    className="max-w-full max-h-full object-contain transition-transform duration-200"
+                    style={{ 
+                      transform: `translate(${imageOffsetX}px, ${imageOffsetY}px) scale(${zoomLevel}) rotate(${rotation}deg)` 
+                    }}
+                  />
+                </div>
+                <div className="absolute bottom-2 left-2 right-2 bg-charcoal-950/90 rounded-xl p-2 backdrop-blur-sm space-y-2">
+                  <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setZoomLevel(Math.max(0.5, zoomLevel - 0.1)); }}
+                    className="p-2 rounded-lg bg-charcoal-800 text-white hover:bg-gold-500 hover:text-charcoal-950 transition"
+                    title="تصغير"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs text-white min-w-[3rem] text-center font-mono">
+                    {Math.round(zoomLevel * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setZoomLevel(Math.min(3, zoomLevel + 0.1)); }}
+                    className="p-2 rounded-lg bg-charcoal-800 text-white hover:bg-gold-500 hover:text-charcoal-950 transition"
+                    title="تكبير"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <div className="w-px h-6 bg-charcoal-700 mx-1" />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setRotation((rotation + 90) % 360); }}
+                    className="p-2 rounded-lg bg-charcoal-800 text-white hover:bg-gold-500 hover:text-charcoal-950 transition"
+                    title="تدوير"
+                  >
+                    <RotateCw className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setZoomLevel(1); setRotation(0); setImageOffsetX(0); setImageOffsetY(0); }}
+                    className="p-2 rounded-lg bg-charcoal-800 text-charcoal-400 hover:text-white transition text-xs font-bold"
+                    title="إعادة تعيين"
+                  >
+                    إعادة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setImageFile(null); setImagePreview(''); setZoomLevel(1); setRotation(0); setImageOffsetX(0); setImageOffsetY(0); }}
+                    className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition text-xs font-bold"
+                    title="حذف الصورة"
+                  >
+                    حذف
+                  </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <ImageRange
+                      label="X"
+                      min="-80"
+                      max="80"
+                      value={imageOffsetX}
+                      onChange={(event) => setImageOffsetX(Number(event.target.value))}
+                    />
+                    <ImageRange
+                      label="Y"
+                      min="-80"
+                      max="80"
+                      value={imageOffsetY}
+                      onChange={(event) => setImageOffsetY(Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="h-48 flex flex-col items-center justify-center text-charcoal-400 gap-3">
                 <ImagePlus className="w-10 h-10 text-gold-400" />
@@ -209,8 +317,7 @@ export default function ManageStoreItems() {
           </div>
 
           <Input name="title" label="اسم المنتج / الخدمة" value={form.title} onChange={handleChange} required />
-          <Input name="brand" label="البراند" value={form.brand} onChange={handleChange} />
-          <Input name="category" label="التصنيف" value={form.category} onChange={handleChange} />
+          <Input name="brand" label="البراند / اسم المحل" value={form.brand} onChange={handleChange} />
           <Textarea name="description" label="الوصف" value={form.description} onChange={handleChange} required />
 
           <div className="grid grid-cols-2 gap-3">
@@ -332,8 +439,90 @@ function Textarea({ label, ...props }) {
   );
 }
 
+function ImageRange({ label, ...props }) {
+  return (
+    <label className="flex items-center gap-2 text-[10px] font-bold text-charcoal-400">
+      <span className="w-4 text-center">{label}</span>
+      <input
+        {...props}
+        type="range"
+        className="w-full accent-gold-500"
+        onClick={(event) => event.preventDefault()}
+      />
+    </label>
+  );
+}
+
 function getTime(value) {
   if (!value) return 0;
   if (typeof value?.toDate === 'function') return value.toDate().getTime();
   return new Date(value).getTime() || 0;
+}
+
+async function createEditedImageFile({
+  file,
+  zoomLevel,
+  rotation,
+  offsetX,
+  offsetY,
+}) {
+  const image = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 720;
+
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#f6fbfa';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const baseScale = Math.min(
+    canvas.width / image.naturalWidth,
+    canvas.height / image.naturalHeight
+  );
+  const drawWidth = image.naturalWidth * baseScale * zoomLevel;
+  const drawHeight = image.naturalHeight * baseScale * zoomLevel;
+  const radians = (rotation * Math.PI) / 180;
+
+  context.save();
+  context.translate(
+    canvas.width / 2 + offsetX * 4,
+    canvas.height / 2 + offsetY * 4
+  );
+  context.rotate(radians);
+  context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  context.restore();
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (nextBlob) => {
+        if (nextBlob) {
+          resolve(nextBlob);
+          return;
+        }
+        reject(new Error('Failed to process image before upload.'));
+      },
+      'image/jpeg',
+      0.92
+    );
+  });
+
+  const baseName = file.name.replace(/\.[^/.]+$/, '') || 'store_item';
+  return new File([blob], `${baseName}_edited.jpg`, { type: 'image/jpeg' });
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load selected image.'));
+    };
+    image.src = objectUrl;
+  });
 }

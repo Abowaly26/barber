@@ -26,7 +26,7 @@ class ChatRoomView extends StatefulWidget {
   State<ChatRoomView> createState() => _ChatRoomViewState();
 }
 
-class _ChatRoomViewState extends State<ChatRoomView> {
+class _ChatRoomViewState extends State<ChatRoomView> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   late String _chatId;
@@ -36,10 +36,26 @@ class _ChatRoomViewState extends State<ChatRoomView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final customerId = FirebaseAuth.instance.currentUser?.uid ?? '';
     _chatId = widget.chatId ?? '${customerId}_${widget.barberId}';
     _currentSlot = widget.slotDetails;
     _markAsRead();
+    _setCustomerPresence(true);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _setCustomerPresence(false);
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _setCustomerPresence(state == AppLifecycleState.resumed);
   }
 
   void _markAsRead() {
@@ -48,6 +64,13 @@ class _ChatRoomViewState extends State<ChatRoomView> {
         .doc(_chatId)
         .update({'unreadByCustomer': 0})
         .catchError((_) {});
+  }
+
+  void _setCustomerPresence(bool isOnline) {
+    FirebaseFirestore.instance.collection('chats').doc(_chatId).set({
+      'customerOnline': isOnline,
+      'customerLastSeen': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)).catchError((_) {});
   }
 
   String _formatTime(Timestamp? timestamp) {
@@ -96,30 +119,31 @@ class _ChatRoomViewState extends State<ChatRoomView> {
     } catch (_) {}
 
     final timestamp = FieldValue.serverTimestamp();
+    final batch = FirebaseFirestore.instance.batch();
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(_chatId);
+    final messageRef = chatRef.collection('messages').doc();
 
-    // Ensure chat doc exists
-    await FirebaseFirestore.instance.collection('chats').doc(_chatId).set({
+    batch.set(chatRef, {
       'customerId': customerId,
       'customerName': senderName,
       'barberId': widget.barberId,
       'barberName': widget.barberName,
       'lastMessage': text,
       'lastMessageTime': timestamp,
+      'customerOnline': true,
+      'customerLastSeen': timestamp,
       'unreadByBarber': FieldValue.increment(1),
     }, SetOptions(merge: true));
 
-    // Send Message
-    await FirebaseFirestore.instance
-        .collection('chats')
-        .doc(_chatId)
-        .collection('messages')
-        .add({
-          'senderId': customerId,
-          'senderName': senderName,
-          'message': text,
-          'timestamp': timestamp,
-          'type': 'text',
-        });
+    batch.set(messageRef, {
+      'senderId': customerId,
+      'senderName': senderName,
+      'message': text,
+      'timestamp': timestamp,
+      'type': 'text',
+    });
+
+    await batch.commit();
 
     _scrollToBottom();
   }
@@ -166,27 +190,32 @@ class _ChatRoomViewState extends State<ChatRoomView> {
       final timeStr = _formatSlotTime(slotTimeStr);
       final systemMessage = '📅 تم حجز الموعد بنجاح: $dateStr الساعة $timeStr';
 
-      await FirebaseFirestore.instance.collection('chats').doc(_chatId).set({
+      final timestamp = FieldValue.serverTimestamp();
+      final batch = FirebaseFirestore.instance.batch();
+      final chatRef = FirebaseFirestore.instance.collection('chats').doc(_chatId);
+      final messageRef = chatRef.collection('messages').doc();
+
+      batch.set(chatRef, {
         'customerId': customerId,
         'customerName': customerName,
         'barberId': widget.barberId,
         'barberName': widget.barberName,
         'lastMessage': '📅 تم حجز الموعد بنجاح',
-        'lastMessageTime': FieldValue.serverTimestamp(),
+        'lastMessageTime': timestamp,
+        'customerOnline': true,
+        'customerLastSeen': timestamp,
         'unreadByBarber': FieldValue.increment(1),
       }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(_chatId)
-          .collection('messages')
-          .add({
-            'senderId': 'system',
-            'senderName': 'System',
-            'message': systemMessage,
-            'timestamp': FieldValue.serverTimestamp(),
-            'type': 'system_booking',
-          });
+      batch.set(messageRef, {
+        'senderId': 'system',
+        'senderName': 'System',
+        'message': systemMessage,
+        'timestamp': timestamp,
+        'type': 'system_booking',
+      });
+
+      await batch.commit();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -241,78 +270,93 @@ class _ChatRoomViewState extends State<ChatRoomView> {
         elevation: 0,
         shadowColor: Colors.black.withOpacity(0.05),
         titleSpacing: 0,
-        title: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: Row(
-            children: [
-              Container(
-                width: 42.w,
-                height: 42.w,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.primary,
-                      AppColors.primary.withOpacity(0.8),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              SizedBox(width: 14.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.barberName,
-                      style: TextStyle(
-                        fontSize: 17.sp,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                        letterSpacing: -0.3,
+        title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('chats')
+              .doc(_chatId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final chatData = snapshot.data?.data() ?? {};
+            final barberOnline = chatData['barberOnline'] == true;
+
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42.w,
+                    height: 42.w,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primary,
+                          AppColors.primary.withOpacity(0.8),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6.w,
-                          height: 6.w,
-                          decoration: const BoxDecoration(
-                            color: AppColors.successGreen,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: 6.w),
-                        Text(
-                          'Professional Barber',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppColors.textGrey,
-                            fontWeight: FontWeight.w500,
-                          ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  SizedBox(width: 14.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.barberName,
+                          style: TextStyle(
+                            fontSize: 17.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Row(
+                          children: [
+                            Container(
+                              width: 6.w,
+                              height: 6.w,
+                              decoration: BoxDecoration(
+                                color: barberOnline
+                                    ? AppColors.successGreen
+                                    : AppColors.textGrey.withOpacity(0.55),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            SizedBox(width: 6.w),
+                            Text(
+                              barberOnline ? 'Online' : 'Offline',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: barberOnline
+                                    ? AppColors.successGreen
+                                    : AppColors.textGrey,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
       body: Column(
@@ -629,12 +673,5 @@ class _ChatRoomViewState extends State<ChatRoomView> {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 }

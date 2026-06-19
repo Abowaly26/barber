@@ -1,18 +1,16 @@
-import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+﻿import { NavLink } from 'react-router-dom';
 import { useAuth } from '../App';
 import { 
   LayoutDashboard, 
   Scissors, 
   CalendarDays, 
-  FolderHeart, 
   LogOut,
   UserCheck,
   TrendingUp,
   Sliders,
   MessageSquare,
   ShoppingBag,
-  Menu,
+  Images,
   X
 } from 'lucide-react';
 
@@ -23,11 +21,13 @@ export default function Sidebar({ isMobileOpen, onMobileClose }) {
     { to: '/admin', label: 'الرئيسية والتقارير', icon: LayoutDashboard, end: true },
     { to: '/admin/barbers', label: 'إدارة الحلاقين', icon: Scissors },
     { to: '/admin/store', label: 'إدارة متجر QUTI', icon: ShoppingBag },
+    { to: '/admin/cart', label: 'إدارة السلات', icon: ShoppingBag },
+    { to: '/admin/banners', label: 'إدارة بنرات التطبيق', icon: Images },
   ];
 
   const barberLinks = [
     { to: '/barber', label: 'الرئيسية والإحصائيات', icon: LayoutDashboard, end: true },
-    { to: '/barber/services', label: 'الخدمات والأسعار', icon: FolderHeart },
+    { to: '/barber/store', label: 'منتجاتي وعروضي', icon: ShoppingBag },
     { to: '/barber/slots', label: 'مواعيد الحجوزات', icon: CalendarDays },
     { to: '/barber/bookings', label: 'قائمة الحجوزات', icon: UserCheck },
     { to: '/barber/messages', label: 'الرسائل والمحادثات', icon: MessageSquare },

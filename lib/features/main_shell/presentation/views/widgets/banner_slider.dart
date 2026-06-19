@@ -1,11 +1,12 @@
 import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
 
-/// Banner slider with auto-scroll functionality
-/// Uses images from assets folder
 class BannerSlider extends StatefulWidget {
   const BannerSlider({super.key});
 
@@ -13,31 +14,23 @@ class BannerSlider extends StatefulWidget {
   State<BannerSlider> createState() => _BannerSliderState();
 }
 
-class _BannerSliderState extends State<BannerSlider>
-    with WidgetsBindingObserver {
-  late PageController _bannerController;
-  int _currentBannerIndex = 0;
-  Timer? _bannerTimer;
-
-  // Banner images from assets folder
-  final List<String> _bannerImages = [
-    'assets/download.jpg',
-    'assets/removebg-preview.png',
-    'assets/download (3).jpg', // ملاحظة: اسم بمسافة
+class _BannerSliderState extends State<BannerSlider> with WidgetsBindingObserver {
+  static const _fallbackImages = [
+    _BannerImage(imageUrl: 'assets/download.jpg', isAsset: true),
+    _BannerImage(imageUrl: 'assets/removebg-preview.png', isAsset: true),
+    _BannerImage(imageUrl: 'assets/download (3).jpg', isAsset: true),
   ];
+
+  final PageController _bannerController = PageController(initialPage: 0);
+  int _currentBannerIndex = 0;
+  int _bannerCount = _fallbackImages.length;
+  Timer? _bannerTimer;
 
   @override
   void initState() {
     super.initState();
-    _bannerController = PageController(initialPage: 0);
     WidgetsBinding.instance.addObserver(this);
-
-    // Start auto-scroll after the first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _bannerImages.isNotEmpty) {
-        _startBannerAutoScroll();
-      }
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startBannerAutoScroll());
   }
 
   @override
@@ -54,26 +47,37 @@ class _BannerSliderState extends State<BannerSlider>
     if (!mounted) return;
 
     if (state == AppLifecycleState.resumed) {
-      // Restart timer when app comes to foreground
       _startBannerAutoScroll();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      // Stop timer when app is not active
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _stopBannerAutoScroll();
     }
   }
 
+  void _syncBannerCount(int nextCount) {
+    if (_bannerCount == nextCount) return;
+
+    _bannerCount = nextCount;
+    if (_currentBannerIndex >= nextCount) {
+      _currentBannerIndex = 0;
+      if (_bannerController.hasClients) {
+        _bannerController.jumpToPage(0);
+      }
+    }
+
+    _stopBannerAutoScroll();
+    _startBannerAutoScroll();
+  }
+
   void _startBannerAutoScroll() {
-    if (_bannerTimer?.isActive == true || _bannerImages.length <= 1) return;
+    if (_bannerTimer?.isActive == true || _bannerCount <= 1) return;
 
     _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!mounted || !_bannerController.hasClients) {
+      if (!mounted || !_bannerController.hasClients || _bannerCount <= 1) {
         timer.cancel();
         return;
       }
 
-      _currentBannerIndex = (_currentBannerIndex + 1) % _bannerImages.length;
-
+      _currentBannerIndex = (_currentBannerIndex + 1) % _bannerCount;
       _bannerController.animateToPage(
         _currentBannerIndex,
         duration: const Duration(milliseconds: 300),
@@ -88,61 +92,85 @@ class _BannerSliderState extends State<BannerSlider>
 
   @override
   Widget build(BuildContext context) {
-    if (_bannerImages.isEmpty) {
-      debugPrint('❌ BannerSlider: No images available');
-      return SizedBox(height: 220.h); // نفس الارتفاع الجديد
-    }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('app_banners')
+          .where('placement', isEqualTo: 'home')
+          .where('isActive', isEqualTo: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final banners = _mapBanners(snapshot.data?.docs);
+        final images = banners.isEmpty ? _fallbackImages : banners;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _syncBannerCount(images.length);
+        });
 
-    debugPrint('✅ BannerSlider: Building with ${_bannerImages.length} images');
+        if (images.isEmpty) return SizedBox(height: 220.h);
 
-    return Column(
-      children: [
-        // Banner PageView with gesture detection
-        Listener(
-          onPointerDown: (_) => _stopBannerAutoScroll(),
-          onPointerUp: (_) => _startBannerAutoScroll(),
-          onPointerCancel: (_) => _startBannerAutoScroll(),
-          child: SizedBox(
-            height: 180.h,
-            child: PageView.builder(
-              controller: _bannerController,
-              itemCount: _bannerImages.length,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentBannerIndex = index;
-                });
-              },
-              itemBuilder: (context, index) {
-                return _buildBannerItem(_bannerImages[index], index);
-              },
+        return Column(
+          children: [
+            Listener(
+              onPointerDown: (_) => _stopBannerAutoScroll(),
+              onPointerUp: (_) => _startBannerAutoScroll(),
+              onPointerCancel: (_) => _startBannerAutoScroll(),
+              child: SizedBox(
+                height: 180.h,
+                child: PageView.builder(
+                  controller: _bannerController,
+                  itemCount: images.length,
+                  onPageChanged: (index) {
+                    setState(() => _currentBannerIndex = index);
+                  },
+                  itemBuilder: (context, index) => _buildBannerItem(images[index], index),
+                ),
+              ),
             ),
-          ),
-        ),
-        SizedBox(height: 12.h),
-
-        // Page indicator
-        SmoothPageIndicator(
-          controller: _bannerController,
-          count: _bannerImages.length,
-          effect: WormEffect(
-            dotHeight: 8.h,
-            dotWidth: 8.w,
-            spacing: 10.w,
-            dotColor: AppColors.borderGrey,
-            activeDotColor: AppColors.primary,
-          ),
-        ),
-      ],
+            SizedBox(height: 12.h),
+            SmoothPageIndicator(
+              controller: _bannerController,
+              count: images.length,
+              effect: WormEffect(
+                dotHeight: 8.h,
+                dotWidth: 8.w,
+                spacing: 10.w,
+                dotColor: AppColors.borderGrey,
+                activeDotColor: AppColors.primary,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildBannerItem(String imagePath, int index) {
-    debugPrint('🖼️ Building banner item $index: $imagePath');
+  List<_BannerImage> _mapBanners(List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs) {
+    if (docs == null || docs.isEmpty) return const [];
 
+    final banners = docs
+        .map((doc) {
+          final data = doc.data();
+          final imageUrl = data['imageUrl']?.toString() ?? '';
+          if (imageUrl.isEmpty) return null;
+
+          return _BannerImage(
+            imageUrl: imageUrl,
+            name: data['name']?.toString(),
+            tapTarget: data['tapTarget']?.toString(),
+            displayOrder: _asInt(data['displayOrder']),
+          );
+        })
+        .whereType<_BannerImage>()
+        .toList();
+
+    banners.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    return banners;
+  }
+
+  Widget _buildBannerItem(_BannerImage banner, int index) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
       decoration: BoxDecoration(
-        color: Colors.grey.shade200, // خلفية مؤقتة للتأكد من الظهور
+        color: Colors.grey.shade200,
         borderRadius: BorderRadius.circular(16.r),
         boxShadow: [
           BoxShadow(
@@ -157,25 +185,7 @@ class _BannerSliderState extends State<BannerSlider>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Banner Image
-            Image.asset(
-              imagePath,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: AppColors.background,
-                  child: Center(
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      size: 48.sp,
-                      color: AppColors.textGrey,
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            // Optional: Gradient overlay for better text visibility
+            _BannerImageView(banner: banner),
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -185,18 +195,12 @@ class _BannerSliderState extends State<BannerSlider>
                 ),
               ),
             ),
-
-            // Tap interaction
             Material(
               color: Colors.transparent,
               child: InkWell(
                 splashColor: AppColors.primary.withOpacity(0.1),
                 highlightColor: AppColors.primary.withOpacity(0.05),
-                onTap: () {
-                  // Handle banner tap
-                  debugPrint('Banner $index tapped');
-                  // TODO: Navigate to specific screen or show details
-                },
+                onTap: () => debugPrint('Home banner tapped: ${banner.name ?? index}'),
               ),
             ),
           ],
@@ -204,4 +208,68 @@ class _BannerSliderState extends State<BannerSlider>
       ),
     );
   }
+}
+
+class _BannerImageView extends StatelessWidget {
+  const _BannerImageView({required this.banner});
+
+  final _BannerImage banner;
+
+  @override
+  Widget build(BuildContext context) {
+    if (banner.isAsset) {
+      return Image.asset(
+        banner.imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const _BannerError(),
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: banner.imageUrl,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => Container(color: AppColors.borderGrey.withOpacity(0.25)),
+      errorWidget: (_, __, ___) => const _BannerError(),
+    );
+  }
+}
+
+class _BannerError extends StatelessWidget {
+  const _BannerError();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.background,
+      child: Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 48.sp,
+          color: AppColors.textGrey,
+        ),
+      ),
+    );
+  }
+}
+
+class _BannerImage {
+  const _BannerImage({
+    required this.imageUrl,
+    this.isAsset = false,
+    this.name,
+    this.tapTarget,
+    this.displayOrder = 0,
+  });
+
+  final String imageUrl;
+  final bool isAsset;
+  final String? name;
+  final String? tapTarget;
+  final int displayOrder;
+}
+
+int _asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
 }

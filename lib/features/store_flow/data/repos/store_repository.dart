@@ -18,6 +18,8 @@ class StoreRepository {
 
   Stream<Either<Failure, List<StoreItemModel>>> streamItems({
     StoreItemType? type,
+    String? barberId,
+    bool fallbackToGlobalItems = false,
     int? limit,
   }) {
     return _firestoreService
@@ -39,11 +41,44 @@ class StoreRepository {
         )
         .map(
           (result) => result.map((items) {
-            final mapped = items.map(StoreItemModel.fromMap).toList();
+            final filteredItems = barberId == null || barberId.isEmpty
+                ? _filterGlobalItems(items)
+                : _filterByBarber(
+                    items,
+                    barberId,
+                    fallbackToGlobalItems: fallbackToGlobalItems,
+                  );
+            final mapped = filteredItems.map(StoreItemModel.fromMap).toList();
             mapped.sort((a, b) => b.createdAt.compareTo(a.createdAt));
             return mapped;
           }),
         );
+  }
+
+  List<Map<String, dynamic>> _filterGlobalItems(List<Map<String, dynamic>> items) {
+    return items.where((item) {
+      final itemBarberId = item['barberId']?.toString() ?? '';
+      final ownerType = item['ownerType']?.toString() ?? 'admin';
+      return itemBarberId.isEmpty && ownerType != 'barber';
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _filterByBarber(
+    List<Map<String, dynamic>> items,
+    String barberId, {
+    required bool fallbackToGlobalItems,
+  }) {
+    final barberItems = items.where((item) {
+      final itemBarberId = item['barberId']?.toString() ?? '';
+      return itemBarberId == barberId;
+    }).toList();
+
+    if (barberItems.isNotEmpty || !fallbackToGlobalItems) return barberItems;
+
+    return items.where((item) {
+      final itemBarberId = item['barberId']?.toString() ?? '';
+      return itemBarberId.isEmpty;
+    }).toList();
   }
 
   Future<Either<Failure, String>> createItem({

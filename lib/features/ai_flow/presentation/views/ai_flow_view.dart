@@ -9,6 +9,7 @@ import 'package:app/features/ai_flow/data/ai_hairstyle_service.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
 import 'package:app/features/booking_type/presentation/views/booking_type_view.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 const int _defaultRecommendationCount = 8;
 
@@ -386,7 +387,49 @@ class _AIAdvisorUploadScreenState extends State<AIAdvisorUploadScreen> {
 
       if (!mounted || photo == null) return;
 
-      setState(() => _selectedPhoto = photo);
+      // Crop the image
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: photo.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'تعديل الصورة',
+            toolbarColor: AppColors.primary,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+            hideBottomControls: false,
+            showCropGrid: true,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio16x9,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'تعديل الصورة',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio16x9,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+            aspectRatioLockEnabled: false,
+            rotateButtonsHidden: false,
+            rotateClockwiseButtonHidden: false,
+            resetButtonHidden: false,
+          ),
+        ],
+      );
+
+      if (!mounted) return;
+
+      if (croppedFile != null) {
+        setState(() => _selectedPhoto = XFile(croppedFile.path));
+      } else {
+        // Use original if cropping was cancelled
+        setState(() => _selectedPhoto = photo);
+      }
     } on PlatformException catch (e) {
       if (!mounted || e.code == 'already_active') return;
 

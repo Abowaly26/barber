@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:app/core/utils/color_manager.dart';
 import 'package:app/core/utils/text_styles.dart';
+import 'package:app/features/quti_shared/quti_shared.dart';
 
 class ChatInputField extends StatelessWidget {
   final TextEditingController controller;
@@ -44,15 +45,34 @@ class ChatInputField extends StatelessWidget {
               decoration: BoxDecoration(
                 color: ColorManager.whiteColor,
                 borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: ColorManager.borderColor, width: 1.w),
               ),
               child: TextField(
                 controller: controller,
-                style: TextStyles.bodyMedium,
+                cursorColor: AppColors.primary,
+                style: TextStyles.bodyMedium.copyWith(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w600,
+                ),
                 decoration: InputDecoration(
                   hintText: 'اكتب رسالة...',
                   hintStyle: TextStyles.hint,
-                  border: InputBorder.none,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: BorderSide(
+                      color: ColorManager.borderColor,
+                      width: 1.w,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5.w,
+                    ),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 16.w,
                     vertical: 12.h,
@@ -74,7 +94,7 @@ class ChatInputField extends StatelessWidget {
               width: 44.w,
               height: 44.h,
               decoration: BoxDecoration(
-                color: ColorManager.primaryColor,
+                color: AppColors.primary,
                 borderRadius: BorderRadius.circular(12.r),
               ),
               child: Icon(

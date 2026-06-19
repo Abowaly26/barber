@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Navigate, Routes, Route } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useAuth } from '../App';
 import { db } from '../firebase';
@@ -18,13 +18,13 @@ import {
 import { 
   Scissors, 
   Calendar, 
+  Clock,
   DollarSign, 
-  Plus, 
+  Plus,
   Trash2, 
   Check, 
+  CheckCircle,
   X, 
-  FolderHeart, 
-  Clock, 
   TrendingUp, 
   AlertCircle,
   Activity,
@@ -33,6 +33,7 @@ import {
   Menu
 } from 'lucide-react';
 import ManageMessages from './ManageMessages';
+import ManageStoreItems from './ManageStoreItems';
 
 export default function BarberDashboard() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -62,10 +63,11 @@ export default function BarberDashboard() {
         
         <Routes>
           <Route path="/" element={<BarberHome />} />
-          <Route path="/services" element={<ManageServices />} />
+          <Route path="/store" element={<ManageStoreItems ownerScope="barber" />} />
           <Route path="/slots" element={<ManageSlots />} />
           <Route path="/bookings" element={<ManageBookings />} />
           <Route path="/messages" element={<ManageMessages />} />
+          <Route path="*" element={<Navigate to="/barber" replace />} />
         </Routes>
       </main>
     </div>
@@ -77,7 +79,6 @@ function BarberHome() {
   const { user } = useAuth();
   const [stats, setStats] = useState({
     myBookings: 0,
-    myServices: 0,
     myRevenue: 0,
   });
   const [todaySchedule, setTodaySchedule] = useState([]);
@@ -86,16 +87,6 @@ function BarberHome() {
 
   useEffect(() => {
     if (!user) return;
-
-    // Real-time listener for services by this barber
-    const servicesQuery = query(collection(db, 'services'), where('barberId', '==', user.uid));
-    const unsubscribeServices = onSnapshot(servicesQuery, (snapshot) => {
-      setStats(prev => ({ ...prev, myServices: snapshot.size }));
-    }, (err) => {
-      console.error("Error fetching services:", err);
-      setError("حدث خطأ أثناء جلب البيانات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
-      setLoading(false);
-    });
 
     // Real-time listener for appointments (bookings) of this barber
     const appointmentsQuery = query(collection(db, 'appointments'), where('barberId', '==', user.uid));
@@ -138,7 +129,6 @@ function BarberHome() {
     });
 
     return () => {
-      unsubscribeServices();
       unsubscribeAppointments();
     };
   }, [user]);
@@ -150,7 +140,7 @@ function BarberHome() {
         <div>
           <h4 className="font-bold text-red-400 mb-1">فشل تحميل البيانات</h4>
           <p>{error}</p>
-          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ services و appointments في قواعد حماية Firestore.</p>
+          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ appointments في قواعد حماية Firestore.</p>
         </div>
       </div>
     );
@@ -166,7 +156,6 @@ function BarberHome() {
 
   const statCards = [
     { title: 'حجوزاتي المؤكدة', value: stats.myBookings, icon: Calendar, color: 'from-blue-500/10 to-blue-600/5', iconColor: 'text-blue-400' },
-    { title: 'خدماتي المتاحة', value: stats.myServices, icon: FolderHeart, color: 'from-purple-500/10 to-purple-600/5', iconColor: 'text-purple-400' },
     { title: 'إجمالي أرباحي', value: `${stats.myRevenue} ج.م`, icon: DollarSign, color: 'from-gold-500/10 to-gold-600/5', iconColor: 'text-gold-400' },
   ];
 
@@ -179,7 +168,7 @@ function BarberHome() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {statCards.map((card, idx) => {
           const Icon = card.icon;
           return (
@@ -238,268 +227,15 @@ function BarberHome() {
   );
 }
 
-// 2. MANAGE SERVICES SCREEN
-function ManageServices() {
-  const { user } = useAuth();
-  const [services, setServices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState('');
-  const [fetchError, setFetchError] = useState(null);
-  const [submitLoading, setSubmitLoading] = useState(false);
-
-  // Form Fields
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [duration, setDuration] = useState('30');
-  const [description, setDescription] = useState('');
-
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(collection(db, 'services'), where('barberId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = [];
-      snapshot.forEach(docSnap => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setServices(list);
-      setLoading(false);
-    }, (err) => {
-      console.error("Error fetching services:", err);
-      setFetchError("حدث خطأ أثناء تحميل الخدمات: يرجى التحقق من قواعد الحماية (Rules) في Firestore.");
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  const handleAddService = async (e) => {
-    e.preventDefault();
-    if (!name || !price || !duration) {
-      setError('الرجاء ملء جميع الحقول المطلوبة');
-      return;
-    }
-
-    setSubmitLoading(true);
-    setError('');
-
-    try {
-      await addDoc(collection(db, 'services'), {
-        name,
-        price: Number(price),
-        duration: Number(duration),
-        description: description || '',
-        barberId: user.uid,
-        createdAt: new Date().toISOString(),
-      });
-
-      setName('');
-      setPrice('');
-      setDuration('30');
-      setDescription('');
-      setIsModalOpen(false);
-    } catch (err) {
-      setError('حدث خطأ أثناء إضافة الخدمة: ' + err.message);
-    } finally {
-      setSubmitLoading(false);
-    }
-  };
-
-  const handleDeleteService = async (serviceId) => {
-    if (window.confirm('هل أنت متأكد من حذف هذه الخدمة؟')) {
-      try {
-        await deleteDoc(doc(db, 'services', serviceId));
-      } catch (err) {
-        alert('خطأ أثناء حذف الخدمة: ' + err.message);
-      }
-    }
-  };
-
-  if (fetchError) {
-    return (
-      <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-red-200 text-sm flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-        <div>
-          <h4 className="font-bold text-red-400 mb-1">فشل تحميل الخدمات</h4>
-          <p>{fetchError}</p>
-          <p className="mt-2 text-xs text-charcoal-400">تأكد من تفعيل صلاحيات القراءة والكتابة لكولكشن الـ services في قواعد حماية Firestore.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8 animate-fade-in relative">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-white">الخدمات والأسعار</h1>
-          <p className="text-charcoal-400 mt-1 text-sm font-medium">قائمة الخدمات التي تقدمها للعملاء وتكلفتها ومدتها</p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-l from-gold-500 to-gold-400 hover:from-gold-600 hover:to-gold-500 text-charcoal-950 font-bold rounded-xl transition-all shadow-lg shadow-gold-500/10 active:scale-95"
-        >
-          <Plus className="w-5 h-5" />
-          <span>إضافة خدمة جديدة</span>
-        </button>
-      </div>
-
-      {/* Services Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {services.length > 0 ? (
-          services.map((service) => (
-            <div key={service.id} className="glass-panel p-6 rounded-2xl border border-charcoal-800 flex flex-col justify-between">
-              <div>
-                <div className="flex items-start justify-between">
-                  <h4 className="text-lg font-bold text-white truncate max-w-[80%]">{service.name}</h4>
-                  <span className="text-gold-400 font-extrabold text-lg font-inter shrink-0">{service.price} ج.م</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-charcoal-400 mt-2 font-inter">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{service.duration} دقيقة</span>
-                </div>
-                <p className="text-xs text-charcoal-400 mt-3.5 leading-relaxed">{service.description || 'لا يوجد وصف متاح للخدمة'}</p>
-              </div>
-
-              <div className="pt-6 mt-6 border-t border-charcoal-800/80 flex items-center justify-end">
-                <button
-                  onClick={() => handleDeleteService(service.id)}
-                  className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
-                  title="حذف الخدمة"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full text-center py-20 text-charcoal-500">
-            <FolderHeart className="w-12 h-12 mx-auto mb-4 text-charcoal-700" />
-            <p>لم تقم بإضافة أي خدمة بعد</p>
-          </div>
-        )}
-      </div>
-
-      {/* Add Service Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel w-full max-w-lg rounded-3xl p-8 border border-charcoal-800 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-charcoal-800">
-              <h3 className="text-xl font-bold text-white">إضافة خدمة جديدة</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-lg bg-charcoal-900 border border-charcoal-800 hover:bg-charcoal-800 text-charcoal-400 hover:text-white transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-200 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAddService} className="space-y-5">
-              <div>
-                <label className="block text-xs font-semibold text-charcoal-300 mb-2">اسم الخدمة *</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="مثال: قص شعر ملكي / تحديد ذقن بالخيط"
-                  className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-charcoal-300 mb-2">السعر (ج.م) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="150"
-                    className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-                    dir="ltr"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-charcoal-300 mb-2">المدة (بالدقائق) *</label>
-                  <select
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500"
-                  >
-                    <option value="15">15 دقيقة</option>
-                    <option value="30">30 دقيقة</option>
-                    <option value="45">45 دقيقة</option>
-                    <option value="60">60 دقيقة</option>
-                    <option value="90">90 دقيقة</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-charcoal-300 mb-2">الوصف والتفاصيل</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows="4"
-                  placeholder="اكتب وصفاً قصيراً للخدمة والمواد المستخدمة إن وجدت..."
-                  className="w-full px-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500"
-                ></textarea>
-              </div>
-
-              <div className="pt-4 flex items-center gap-4">
-                <button
-                  type="submit"
-                  disabled={submitLoading}
-                  className="flex-1 py-3.5 bg-gradient-to-l from-gold-500 to-gold-400 hover:from-gold-600 hover:to-gold-500 text-charcoal-950 font-bold rounded-xl transition-all shadow-lg shadow-gold-500/10 flex items-center justify-center gap-2"
-                >
-                  {submitLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-charcoal-950 border-t-transparent rounded-full animate-spin"></div>
-                      <span>جاري الحفظ...</span>
-                    </>
-                  ) : (
-                    <span>حفظ الخدمة</span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-3.5 bg-charcoal-900 border border-charcoal-800 hover:bg-charcoal-800 text-charcoal-300 hover:text-white font-bold rounded-xl transition-all"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 3. MANAGE SLOTS (WORKING HOURS) SCREEN
+// 2. MANAGE SLOTS (WORKING HOURS) SCREEN
 function ManageSlots() {
   const { user } = useAuth();
+  const dateInputRef = useRef(null);
+  const startTimeInputRef = useRef(null);
+  const endTimeInputRef = useRef(null);
   const [slots, setSlots] = useState([]);
+  const [selectedDateFilter, setSelectedDateFilter] = useState('all');
+  const [selectedSlotIds, setSelectedSlotIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
 
@@ -528,6 +264,7 @@ function ManageSlots() {
       // Sort slots by dateTime
       list.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
       setSlots(list);
+      setSelectedSlotIds((current) => current.filter((id) => list.some((slot) => slot.id === id)));
       setLoading(false);
     }, (err) => {
       console.error("Error fetching slots:", err);
@@ -596,6 +333,16 @@ function ManageSlots() {
     }
   };
 
+  const openNativePicker = (inputRef) => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.focus();
+    if (typeof input.showPicker === 'function') {
+      input.showPicker();
+    }
+  };
+
   const handleDeleteSlot = async (slotId) => {
     if (window.confirm('هل تريد حذف هذا الموعد المتاح؟')) {
       try {
@@ -604,6 +351,66 @@ function ManageSlots() {
         alert('خطأ أثناء الحذف: ' + err.message);
       }
     }
+  };
+
+  const slotDate = (slot) => slot.dateTime ? slot.dateTime.split('T')[0] : '';
+  const availableDates = Array.from(new Set(slots.map(slotDate).filter(Boolean))).sort();
+  const filteredSlots = selectedDateFilter === 'all'
+    ? slots
+    : slots.filter((slot) => slotDate(slot) === selectedDateFilter);
+  const selectedSlots = slots.filter((slot) => selectedSlotIds.includes(slot.id));
+  const allFilteredSelected = filteredSlots.length > 0 && filteredSlots.every((slot) => selectedSlotIds.includes(slot.id));
+
+  const toggleSlotSelection = (slotId) => {
+    setSelectedSlotIds((current) => current.includes(slotId)
+      ? current.filter((id) => id !== slotId)
+      : [...current, slotId]
+    );
+  };
+
+  const toggleFilteredSelection = () => {
+    setSelectedSlotIds((current) => {
+      const filteredIds = filteredSlots.map((slot) => slot.id);
+      if (filteredIds.length === 0) return current;
+
+      if (filteredIds.every((id) => current.includes(id))) {
+        return current.filter((id) => !filteredIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...filteredIds]));
+    });
+  };
+
+  const deleteSlotsByIds = async (slotIds, confirmMessage) => {
+    if (slotIds.length === 0) return;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      await Promise.all(slotIds.map((slotId) => deleteDoc(doc(db, 'appointments', slotId))));
+      setSelectedSlotIds((current) => current.filter((id) => !slotIds.includes(id)));
+    } catch (err) {
+      alert('حدث خطأ أثناء حذف المواعيد: ' + err.message);
+    }
+  };
+
+  const handleDeleteSelectedSlots = () => {
+    deleteSlotsByIds(selectedSlotIds, `هل تريد حذف ${selectedSlotIds.length} موعد محدد؟`);
+  };
+
+  const handleDeleteFilteredDaySlots = () => {
+    if (selectedDateFilter === 'all') {
+      alert('اختار يوم محدد أولاً لحذف مواعيد اليوم فقط.');
+      return;
+    }
+
+    deleteSlotsByIds(
+      filteredSlots.map((slot) => slot.id),
+      `هل تريد حذف كل مواعيد يوم ${selectedDateFilter}؟`
+    );
+  };
+
+  const handleDeleteAllSlots = () => {
+    deleteSlotsByIds(slots.map((slot) => slot.id), `هل تريد حذف كل المواعيد المتاحة (${slots.length})؟`);
   };
 
   const handleCloseSlot = async (slotId) => {
@@ -683,37 +490,67 @@ function ManageSlots() {
           <form onSubmit={handleGenerateSlots} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-charcoal-300 mb-2">التاريخ *</label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-              />
+              <div className="relative group">
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  required
+                  value={date}
+                  onClick={() => openNativePicker(dateInputRef)}
+                  onChange={(e) => setDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full cursor-pointer px-4 pl-14 py-2.5 bg-charcoal-900 border border-charcoal-800 hover:border-gold-500/70 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right transition"
+                />
+                <span
+                  className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-500/30 group-hover:bg-gold-500 group-hover:text-charcoal-950 transition flex items-center justify-center"
+                  title="اختيار التاريخ"
+                >
+                  <Calendar className="w-4 h-4" />
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-charcoal-300 mb-2">من الساعة *</label>
-                <input
-                  type="time"
-                  required
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-                />
+                <div className="relative group">
+                  <input
+                    ref={startTimeInputRef}
+                    type="time"
+                    required
+                    value={startTime}
+                    onClick={() => openNativePicker(startTimeInputRef)}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full cursor-pointer px-4 pl-12 py-2.5 bg-charcoal-900 border border-charcoal-800 hover:border-gold-500/70 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right transition"
+                  />
+                  <span
+                    className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-500/30 group-hover:bg-gold-500 group-hover:text-charcoal-950 transition flex items-center justify-center"
+                    title="اختيار وقت البداية"
+                  >
+                    <Clock className="w-4 h-4" />
+                  </span>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-charcoal-300 mb-2">إلى الساعة *</label>
-                <input
-                  type="time"
-                  required
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-                />
+                <div className="relative group">
+                  <input
+                    ref={endTimeInputRef}
+                    type="time"
+                    required
+                    value={endTime}
+                    onClick={() => openNativePicker(endTimeInputRef)}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full cursor-pointer px-4 pl-12 py-2.5 bg-charcoal-900 border border-charcoal-800 hover:border-gold-500/70 focus:border-gold-500 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right transition"
+                  />
+                  <span
+                    className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg bg-gold-500/15 text-gold-400 border border-gold-500/30 group-hover:bg-gold-500 group-hover:text-charcoal-950 transition flex items-center justify-center"
+                    title="اختيار وقت النهاية"
+                  >
+                    <Clock className="w-4 h-4" />
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -743,15 +580,84 @@ function ManageSlots() {
 
         {/* Display List */}
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-charcoal-800">
-          <h3 className="text-lg font-bold text-white mb-6">الأوقات المتاحة الحالية ({slots.length})</h3>
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">الأوقات المتاحة الحالية ({filteredSlots.length})</h3>
+                <p className="mt-1 text-xs text-charcoal-500">
+                  إجمالي المتاح: {slots.length} · المحدد: {selectedSlotIds.length}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedDateFilter}
+                  onChange={(event) => {
+                    setSelectedDateFilter(event.target.value);
+                    setSelectedSlotIds([]);
+                  }}
+                  className="h-10 min-w-[160px] rounded-xl border border-charcoal-800 bg-charcoal-950 px-3 text-sm font-bold text-white outline-none transition focus:border-gold-500"
+                >
+                  <option value="all">كل الأيام</option>
+                  {availableDates.map((day) => (
+                    <option key={day} value={day}>{day}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={toggleFilteredSelection}
+                  disabled={filteredSlots.length === 0}
+                  className="h-10 rounded-xl border border-charcoal-800 bg-charcoal-950 px-3 text-xs font-black text-charcoal-300 transition hover:border-gold-500 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {allFilteredSelected ? 'إلغاء تحديد الظاهر' : 'تحديد الظاهر'}
+                </button>
+              </div>
+            </div>
 
-          {slots.length > 0 ? (
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <button
+                type="button"
+                onClick={handleDeleteSelectedSlots}
+                disabled={selectedSlotIds.length === 0}
+                className="rounded-xl border border-red-900/40 bg-red-950/20 px-3 py-2.5 text-xs font-black text-red-200 transition hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-950/20 disabled:hover:text-red-200"
+              >
+                حذف المحدد ({selectedSlotIds.length})
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteFilteredDaySlots}
+                disabled={selectedDateFilter === 'all' || filteredSlots.length === 0}
+                className="rounded-xl border border-red-900/40 bg-red-950/20 px-3 py-2.5 text-xs font-black text-red-200 transition hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-950/20 disabled:hover:text-red-200"
+              >
+                حذف مواعيد اليوم
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllSlots}
+                disabled={slots.length === 0}
+                className="rounded-xl border border-red-900/40 bg-red-950/20 px-3 py-2.5 text-xs font-black text-red-200 transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-950/20 disabled:hover:text-red-200"
+              >
+                حذف كل المواعيد
+              </button>
+            </div>
+          </div>
+
+          {filteredSlots.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
-              {slots.map((slot) => {
+              {filteredSlots.map((slot) => {
                 const [d, t] = slot.dateTime ? slot.dateTime.split('T') : ['', ''];
+                const isSelected = selectedSlotIds.includes(slot.id);
                 return (
-                  <div key={slot.id} className="p-4 rounded-xl bg-charcoal-900/60 border border-charcoal-800/60 flex items-center justify-between">
+                  <div key={slot.id} className={`p-4 rounded-xl border flex items-center justify-between transition ${isSelected ? 'border-gold-500/70 bg-gold-500/10' : 'bg-charcoal-900/60 border-charcoal-800/60'}`}>
                     <div>
+                      <label className="mb-2 flex cursor-pointer items-center gap-2 text-xs font-black text-charcoal-400">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSlotSelection(slot.id)}
+                          className="h-4 w-4 cursor-pointer accent-gold-500"
+                        />
+                        تحديد
+                      </label>
                       <div className="text-sm font-bold text-white font-inter">{d}</div>
                       <div className="text-xs text-gold-400 font-semibold font-inter mt-1">{t.substring(0, 5)}</div>
                     </div>
@@ -778,7 +684,7 @@ function ManageSlots() {
           ) : (
             <div className="text-center py-20 text-charcoal-500">
               <Calendar className="w-12 h-12 mx-auto mb-4 text-charcoal-700" />
-              <p>لم تقم بإضافة مواعيد متاحة حالياً</p>
+              <p>{slots.length === 0 ? 'لم تقم بإضافة مواعيد متاحة حالياً' : 'لا توجد مواعيد في اليوم المحدد'}</p>
             </div>
           )}
         </div>
