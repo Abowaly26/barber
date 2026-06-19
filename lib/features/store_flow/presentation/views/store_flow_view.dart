@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:app/features/quti_shared/quti_shared.dart';
 import 'package:app/features/store_flow/data/models/store_item_model.dart';
@@ -17,36 +18,44 @@ class StoreCartAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Icon(Icons.shopping_cart_outlined),
-          Positioned(
-            right: -4,
-            top: -4,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-              child: const Text(
-                '2',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
+    return ValueListenableBuilder<List<StoreCartItem>>(
+      valueListenable: StoreCartController.items,
+      builder: (context, cartItems, _) {
+        final count = cartItems.fold<int>(0, (total, item) => total + item.quantity);
+
+        return IconButton(
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.shopping_cart_outlined),
+              if (count > 0)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const StoreCartScreen()),
-      ),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StoreCartScreen()),
+          ),
+        );
+      },
     );
   }
 }
@@ -235,6 +244,94 @@ class _StoreBannerSliderState extends State<StoreBannerSlider> {
 
     banners.sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
     return banners;
+  }
+}
+
+class StoreCartItem {
+  final String title;
+  final String brand;
+  final String price;
+  final String? imageUrl;
+  int quantity;
+
+  StoreCartItem({
+    required this.title,
+    required this.brand,
+    required this.price,
+    this.imageUrl,
+    this.quantity = 1,
+  });
+}
+
+class StoreCartController {
+  StoreCartController._();
+
+  static final ValueNotifier<List<StoreCartItem>> items =
+      ValueNotifier<List<StoreCartItem>>([]);
+
+  static void addItem({
+    required String title,
+    required String brand,
+    required String price,
+    String? imageUrl,
+    int quantity = 1,
+  }) {
+    final updated = List<StoreCartItem>.from(items.value);
+    final index = updated.indexWhere(
+      (item) => item.title == title && item.brand == brand,
+    );
+
+    if (index >= 0) {
+      updated[index].quantity += quantity;
+    } else {
+      updated.add(
+        StoreCartItem(
+          title: title,
+          brand: brand,
+          price: price,
+          imageUrl: imageUrl,
+          quantity: quantity,
+        ),
+      );
+    }
+
+    items.value = updated;
+  }
+
+  static void updateQuantity(StoreCartItem item, int quantity) {
+    final updated = List<StoreCartItem>.from(items.value);
+    final index = updated.indexWhere(
+      (cartItem) => cartItem.title == item.title && cartItem.brand == item.brand,
+    );
+
+    if (index < 0) return;
+    if (quantity <= 0) {
+      updated.removeAt(index);
+    } else {
+      updated[index].quantity = quantity;
+    }
+
+    items.value = updated;
+  }
+
+  static double priceValue(String price) {
+    final normalized = price.replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(normalized) ?? 0;
+  }
+
+  static String formatEgp(double value) {
+    final fixed = value.toStringAsFixed(2);
+    final trimmed = fixed.endsWith('00')
+        ? value.toStringAsFixed(0)
+        : fixed.replaceFirst(RegExp(r'0$'), '');
+    return '$trimmed EGP';
+  }
+
+  static double subtotal(List<StoreCartItem> cartItems) {
+    return cartItems.fold<double>(
+      0,
+      (total, item) => total + priceValue(item.price) * item.quantity,
+    );
   }
 }
 
@@ -574,6 +671,7 @@ class _StoreItemsSection extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final item = items[index];
                   return StoreProductCard(
+                    productId: item.id,
                     title: item.title,
                     brand: item.brand,
                     price: item.formattedPrice,
@@ -748,6 +846,7 @@ class StoreProductsScreen extends StatelessWidget {
                             itemBuilder: (context, index) {
                               final item = items[index];
                               return StoreProductCard(
+                                productId: item.id,
                                 title: item.title,
                                 brand: item.brand,
                                 price: item.formattedPrice,
@@ -799,6 +898,7 @@ class StoreProductsScreen extends StatelessWidget {
 // REUSABLE PRODUCT CARD
 // ==========================================
 class StoreProductCard extends StatelessWidget {
+  final String productId;
   final String title;
   final String brand;
   final String price;
@@ -813,6 +913,7 @@ class StoreProductCard extends StatelessWidget {
 
   const StoreProductCard({
     super.key,
+    this.productId = '',
     required this.title,
     required this.brand,
     required this.price,
@@ -831,11 +932,31 @@ class StoreProductCard extends StatelessWidget {
     final accent = _accentForProduct(title);
     final foreground = accent.withValues(alpha: 0.92);
 
+    void addToCart() {
+      StoreCartController.addItem(
+        title: title,
+        brand: brand,
+        price: price,
+        imageUrl: imageUrl,
+      );
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$title added to cart'),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => StoreProductDetailScreen(
+            productId: productId,
             title: title,
             brand: brand,
             price: price,
@@ -886,17 +1007,28 @@ class StoreProductCard extends StatelessWidget {
                   Positioned(
                     right: 12,
                     bottom: 12,
-                    child: Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.add_shopping_cart_outlined,
-                        color: foreground,
-                        size: 17,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: addToCart,
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(11),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.add_shopping_cart_outlined,
+                          color: foreground,
+                          size: 18,
+                        ),
                       ),
                     ),
                   ),
@@ -918,35 +1050,44 @@ class StoreProductCard extends StatelessWidget {
             const SizedBox(height: 5),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Flexible(
-                  child: Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                Expanded(
+                  child: Row(
                     children: [
-                      Text(
-                        price,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                          fontSize: 14,
-                        ),
-                      ),
-                      if (oldPrice != null)
-                        Text(
-                          oldPrice!,
+                      Flexible(
+                        child: Text(
+                          price,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 11,
-                            decoration: TextDecoration.lineThrough,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                            fontSize: 13,
                           ),
                         ),
+                      ),
+                      if (oldPrice != null) ...[
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            oldPrice!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textGrey,
+                              fontSize: 10,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 6),
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.star, color: Colors.amber, size: 12),
                     const SizedBox(width: 2),
@@ -1040,6 +1181,7 @@ class StoreProductCard extends StatelessWidget {
 // 3. PRODUCT DETAIL SCREEN
 // ==========================================
 class StoreProductDetailScreen extends StatefulWidget {
+  final String productId;
   final String title;
   final String brand;
   final String price;
@@ -1051,6 +1193,7 @@ class StoreProductDetailScreen extends StatefulWidget {
 
   const StoreProductDetailScreen({
     super.key,
+    this.productId = '',
     required this.title,
     required this.brand,
     required this.price,
@@ -1069,6 +1212,48 @@ class StoreProductDetailScreen extends StatefulWidget {
 class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
   String _selectedSize = 'Regular';
   int _quantity = 1;
+
+  String get _favoriteId => widget.productId.isNotEmpty
+      ? widget.productId
+      : '${widget.brand}_${widget.title}'.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+  DocumentReference<Map<String, dynamic>>? _favoriteRef() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('favorites')
+        .doc(_favoriteId);
+  }
+
+  Future<void> _toggleFavorite(bool isFavorite) async {
+    final ref = _favoriteRef();
+    if (ref == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to save favorites')),
+      );
+      return;
+    }
+
+    if (isFavorite) {
+      await ref.delete();
+    } else {
+      await ref.set({
+        'id': _favoriteId,
+        'productId': widget.productId,
+        'title': widget.title,
+        'brand': widget.brand,
+        'price': widget.price,
+        'oldPrice': widget.oldPrice,
+        'rating': widget.rating,
+        'imageUrl': widget.imageUrl,
+        'description': widget.description,
+        'type': 'product',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1142,7 +1327,7 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                     left: 16,
                     child: _buildHeaderIcon(
                       icon: Icons.arrow_back_ios_new,
-                      onTap: () => Navigator.pop(context),
+                      onTap: (_) => Navigator.pop(context),
                     ),
                   ),
                   Positioned(
@@ -1152,18 +1337,30 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                       children: [
                         _buildHeaderIcon(
                           icon: Icons.favorite_border,
-                          onTap: () {},
+                          activeIcon: Icons.favorite,
+                          activeStream: _favoriteRef()?.snapshots(),
+                          onTap: _toggleFavorite,
                         ),
                         const SizedBox(width: 10),
-                        _buildHeaderIcon(
-                          icon: Icons.shopping_cart_outlined,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const StoreCartScreen(),
-                            ),
-                          ),
-                          badge: '2',
+                        ValueListenableBuilder<List<StoreCartItem>>(
+                          valueListenable: StoreCartController.items,
+                          builder: (context, cartItems, _) {
+                            final count = cartItems.fold<int>(
+                              0,
+                              (total, item) => total + item.quantity,
+                            );
+
+                            return _buildHeaderIcon(
+                              icon: Icons.shopping_cart_outlined,
+                              onTap: (_) => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const StoreCartScreen(),
+                                ),
+                              ),
+                              badge: count > 0 ? '$count' : null,
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -1353,63 +1550,6 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'You May Also Like',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text(
-                          'See All',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    child: Row(
-                      children: [
-                        StoreProductCard(
-                          title: 'Matte Hair Pomade',
-                          brand: 'StylePro',
-                          price: '\$18.5',
-                          rating: '4.6',
-                          width: 140,
-                        ),
-                        SizedBox(width: 16),
-                        StoreProductCard(
-                          title: 'Daily Shampoo 500ml',
-                          brand: 'CleanCut',
-                          price: '\$15.99',
-                          rating: '4.5',
-                          width: 140,
-                        ),
-                        SizedBox(width: 16),
-                        StoreProductCard(
-                          title: 'Professional Trimmer',
-                          brand: 'BladeMax',
-                          price: '\$89.99',
-                          rating: '4.9',
-                          width: 140,
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1430,11 +1570,20 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
         ),
         child: SafeArea(
           top: false,
-          child: ElevatedButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const StoreCartScreen()),
-            ),
+            child: ElevatedButton.icon(
+            onPressed: () {
+              StoreCartController.addItem(
+                title: widget.title,
+                brand: widget.brand,
+                price: widget.price,
+                imageUrl: widget.imageUrl,
+                quantity: _quantity,
+              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StoreCartScreen()),
+              );
+            },
             icon: const Icon(Icons.shopping_cart_outlined, size: 20),
             label: Text('Add $_quantity to Cart'),
             style: ElevatedButton.styleFrom(
@@ -1458,12 +1607,15 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
 
   Widget _buildHeaderIcon({
     required IconData icon,
-    required VoidCallback onTap,
+    required void Function(bool isActive) onTap,
+    IconData? activeIcon,
+    Stream<DocumentSnapshot<Map<String, dynamic>>>? activeStream,
     String? badge,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    Widget buildIcon(bool isActive) {
+      return GestureDetector(
+        onTap: () => onTap(isActive),
+        child: Container(
         width: 42,
         height: 42,
         decoration: BoxDecoration(
@@ -1474,7 +1626,11 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
-            Icon(icon, color: AppColors.textDark, size: 20),
+            Icon(
+              isActive ? activeIcon ?? icon : icon,
+              color: isActive ? AppColors.dangerRed : AppColors.textDark,
+              size: 20,
+            ),
             if (badge != null)
               Positioned(
                 right: 6,
@@ -1497,7 +1653,17 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
               ),
           ],
         ),
-      ),
+        ),
+      );
+    }
+
+    if (activeStream == null) {
+      return buildIcon(false);
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: activeStream,
+      builder: (context, snapshot) => buildIcon(snapshot.data?.exists == true),
     );
   }
 
@@ -1582,16 +1748,8 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
 // ==========================================
 // 4. CART SCREEN
 // ==========================================
-class StoreCartScreen extends StatefulWidget {
+class StoreCartScreen extends StatelessWidget {
   const StoreCartScreen({super.key});
-
-  @override
-  State<StoreCartScreen> createState() => _StoreCartScreenState();
-}
-
-class _StoreCartScreenState extends State<StoreCartScreen> {
-  int _qty1 = 1;
-  int _qty2 = 1;
 
   @override
   Widget build(BuildContext context) {
@@ -1604,35 +1762,58 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
         title: const Text('My Cart'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            _buildCartItem(
-              'Premium Beard Oil',
-              'QUTI Care',
-              '\$24.99',
-              _qty1,
-              (val) => setState(() => _qty1 = val),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('app_settings')
+            .doc('store')
+            .snapshots(),
+        builder: (context, settingsSnapshot) {
+          final deliveryFee = StoreCartController.priceValue(
+            settingsSnapshot.data?.data()?['deliveryFeeEgp']?.toString() ?? '0',
+          );
+
+          return ValueListenableBuilder<List<StoreCartItem>>(
+            valueListenable: StoreCartController.items,
+            builder: (context, cartItems, _) {
+          if (cartItems.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Your cart is empty',
+                  style: TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final subtotal = StoreCartController.subtotal(cartItems);
+          final total = subtotal + deliveryFee;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                ...cartItems.map(_buildCartItem),
+                const SizedBox(height: 40),
+                _buildSummaryRow('Subtotal', StoreCartController.formatEgp(subtotal)),
+                _buildSummaryRow('Delivery Fee', StoreCartController.formatEgp(deliveryFee)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(),
+                ),
+                _buildSummaryRow('Total', StoreCartController.formatEgp(total), isTotal: true),
+                const SizedBox(height: 100),
+              ],
             ),
-            _buildCartItem(
-              'Professional Trimmer',
-              'BladeMax',
-              '\$89.99',
-              _qty2,
-              (val) => setState(() => _qty2 = val),
-            ),
-            const SizedBox(height: 40),
-            _buildSummaryRow('Subtotal', '\$114.98'),
-            _buildSummaryRow('Delivery Fee', '\$5.99'),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Divider(),
-            ),
-            _buildSummaryRow('Total', '\$120.97', isTotal: true),
-            const SizedBox(height: 100),
-          ],
-        ),
+          );
+        },
+          );
+        },
       ),
       bottomSheet: PrimaryBottomButton(
         text: 'Proceed to Checkout',
@@ -1644,13 +1825,7 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
     );
   }
 
-  Widget _buildCartItem(
-    String title,
-    String brand,
-    String price,
-    int qty,
-    Function(int) onQtyChanged,
-  ) {
+  Widget _buildCartItem(StoreCartItem item) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
@@ -1667,6 +1842,10 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
               color: AppColors.background,
               borderRadius: BorderRadius.circular(12),
             ),
+            clipBehavior: Clip.antiAlias,
+            child: item.imageUrl?.isNotEmpty == true
+                ? CachedNetworkImage(imageUrl: item.imageUrl!, fit: BoxFit.cover)
+                : const Icon(Icons.shopping_bag_outlined, color: AppColors.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1678,23 +1857,26 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        title,
+                        item.title,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
                       ),
                     ),
-                    const Icon(
-                      Icons.delete_outline,
-                      color: AppColors.textGrey,
-                      size: 20,
+                    GestureDetector(
+                      onTap: () => StoreCartController.updateQuantity(item, 0),
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: AppColors.textGrey,
+                        size: 20,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  brand,
+                  item.brand,
                   style: const TextStyle(
                     color: AppColors.textGrey,
                     fontSize: 12,
@@ -1705,7 +1887,7 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      price,
+                      item.price,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: AppColors.primary,
@@ -1715,19 +1897,19 @@ class _StoreCartScreenState extends State<StoreCartScreen> {
                     Row(
                       children: [
                         _buildSmallBtn(Icons.remove, () {
-                          if (qty > 1) onQtyChanged(qty - 1);
+                          StoreCartController.updateQuantity(item, item.quantity - 1);
                         }, false),
                         Container(
                           width: 30,
                           alignment: Alignment.center,
                           child: Text(
-                            '$qty',
+                            '${item.quantity}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                         _buildSmallBtn(
                           Icons.add,
-                          () => onQtyChanged(qty + 1),
+                          () => StoreCartController.updateQuantity(item, item.quantity + 1),
                           true,
                         ),
                       ],
@@ -1799,209 +1981,203 @@ class StoreCheckoutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Checkout'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Delivery Address',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const StoreDeliveryDetailsScreen(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('app_settings')
+          .doc('store')
+          .snapshots(),
+      builder: (context, settingsSnapshot) {
+        final deliveryFee = StoreCartController.priceValue(
+          settingsSnapshot.data?.data()?['deliveryFeeEgp']?.toString() ?? '0',
+        );
+
+        return ValueListenableBuilder<List<StoreCartItem>>(
+          valueListenable: StoreCartController.items,
+          builder: (context, cartItems, _) {
+            final subtotal = StoreCartController.subtotal(cartItems);
+            final total = subtotal + (cartItems.isEmpty ? 0 : deliveryFee);
+
+            return Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios, size: 20),
+                  onPressed: () => Navigator.pop(context),
                 ),
+                title: const Text('Checkout'),
+                centerTitle: true,
               ),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.borderGrey),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Row(
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.location_on_outlined, color: AppColors.primary),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    const Text(
+                      'Delivery Address',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const StoreDeliveryDetailsScreen(),
+                        ),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppColors.borderGrey),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, color: AppColors.primary),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Home', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(
+                                    'No delivery address selected',
+                                    style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, color: AppColors.textGrey),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Order Summary',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.borderGrey),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: cartItems.isEmpty
+                          ? const Text(
+                              'Your cart is empty',
+                              style: TextStyle(color: AppColors.textGrey),
+                            )
+                          : Column(
+                              children: cartItems
+                                  .map(
+                                    (item) => _buildOrderSummaryRow(
+                                      '${item.title} x${item.quantity}',
+                                      StoreCartController.formatEgp(
+                                        StoreCartController.priceValue(item.price) * item.quantity,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Payment Method',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.primary),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
                         children: [
-                          Text(
-                            'Home',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '123 Main Street, Suite 101',
-                            style: TextStyle(
-                              color: AppColors.textGrey,
-                              fontSize: 13,
+                          Icon(Icons.payments_outlined, color: AppColors.primary),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: Text(
+                              'Cash on Delivery',
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
+                          Icon(Icons.check_circle, color: AppColors.primary),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: AppColors.textGrey),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Order Summary',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.borderGrey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  _buildOrderSummaryRow('Premium Beard Oil x1', '\$24.99'),
-                  _buildOrderSummaryRow('Professional Trimmer x1', '\$89.99'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Payment Method',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 25,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade800,
-                      borderRadius: BorderRadius.circular(4),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Promo Code',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
-                    alignment: Alignment.center,
-                    child: const Text(
-                      'VISA',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 12),
+                    Row(
                       children: [
-                        Text(
-                          'Visa ending in 4242',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        Expanded(
+                          child: TextField(
+                            decoration: InputDecoration(
+                              hintText: 'Enter promo code',
+                              prefixIcon: const Icon(
+                                Icons.local_offer_outlined,
+                                color: AppColors.textGrey,
+                                size: 20,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: AppColors.borderGrey),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                            ),
+                          ),
                         ),
-                        Text(
-                          'Expires 12/28',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 12,
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: () {},
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryLight,
+                            foregroundColor: AppColors.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text(
+                            'Apply',
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const Icon(Icons.check_circle, color: AppColors.primary),
-                ],
+                    const SizedBox(height: 32),
+                    _buildPriceRow('Subtotal', StoreCartController.formatEgp(subtotal)),
+                    _buildPriceRow(
+                      'Delivery',
+                      StoreCartController.formatEgp(cartItems.isEmpty ? 0 : deliveryFee),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Divider(),
+                    ),
+                    _buildPriceRow('Total', StoreCartController.formatEgp(total), isTotal: true),
+                    const SizedBox(height: 100),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Promo Code',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Enter promo code',
-                      prefixIcon: const Icon(
-                        Icons.local_offer_outlined,
-                        color: AppColors.textGrey,
-                        size: 20,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.borderGrey,
+              bottomSheet: PrimaryBottomButton(
+                text: 'Place Order',
+                onPressed: cartItems.isEmpty
+                    ? null
+                    : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const StoreOrderSuccessScreen()),
                         ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryLight,
-                    foregroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Apply',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            _buildPriceRow('Subtotal', '\$114.98'),
-            _buildPriceRow('Delivery', '\$5.99'),
-            _buildPriceRow('Tax', '\$9.68'),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12.0),
-              child: Divider(),
-            ),
-            _buildPriceRow('Total', '\$130.65', isTotal: true),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
-      bottomSheet: PrimaryBottomButton(
-        text: 'Place Order',
-        onPressed: () => Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const StoreOrderSuccessScreen()),
-          (route) => false,
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2235,7 +2411,7 @@ class StoreDeliveryDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '\$5.99',
+                    '5.99 EGP',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: AppColors.primary,
@@ -2274,7 +2450,7 @@ class StoreDeliveryDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '\$12.99',
+                    '12.99 EGP',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -2396,7 +2572,7 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                           const Divider(height: 24),
                           _buildDetailRow(
                             'Total',
-                            '\$130.65',
+                            '130.65 EGP',
                             isBoldValue: true,
                             valueColor: AppColors.primary,
                           ),
@@ -2440,11 +2616,9 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton(
-                      onPressed: () => Navigator.pushReplacement(
+                      onPressed: () => Navigator.popUntil(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const StoreHomeScreen(),
-                        ),
+                        (route) => route.isFirst,
                       ),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 56),
@@ -2630,22 +2804,22 @@ class StoreOrderTrackingScreen extends StatelessWidget {
                   _buildOrderedItemRow(
                     'Premium Beard Oil',
                     'Qty: 1',
-                    '\$24.99',
+                    '24.99 EGP',
                   ),
                   const SizedBox(height: 12),
                   _buildOrderedItemRow(
                     'Professional Trimmer',
                     'Qty: 1',
-                    '\$89.99',
+                    '89.99 EGP',
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Divider(),
                   ),
-                  _buildPriceRow('Subtotal', '\$114.98'),
-                  _buildPriceRow('Delivery + Tax', '\$15.67'),
+                  _buildPriceRow('Subtotal', '114.98 EGP'),
+                  _buildPriceRow('Delivery + Tax', '15.67 EGP'),
                   const SizedBox(height: 8),
-                  _buildPriceRow('Total', '\$130.65', isTotal: true),
+                  _buildPriceRow('Total', '130.65 EGP', isTotal: true),
                 ],
               ),
             ),

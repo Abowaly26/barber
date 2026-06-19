@@ -112,9 +112,9 @@ class StoreItemModel {
     };
   }
 
-  String get formattedPrice => '\$${_trimMoney(price)}';
+  String get formattedPrice => '${_trimMoney(price)} EGP';
   String? get formattedOldPrice =>
-      oldPrice == null ? null : '\$${_trimMoney(oldPrice!)}';
+      oldPrice == null ? null : '${_trimMoney(oldPrice!)} EGP';
   String get formattedRating => _trimMoney(rating);
 
   static double _doubleFromValue(dynamic value, {double fallback = 0}) {

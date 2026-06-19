@@ -9,6 +9,7 @@ export default function ManageCart() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selectedCart, setSelectedCart] = useState(null);
+  const [deliveryFeeEgp, setDeliveryFeeEgp] = useState(0);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -52,6 +53,14 @@ export default function ManageCart() {
         setLoading(false);
       }
     );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'app_settings', 'store'), (snapshot) => {
+      setDeliveryFeeEgp(Number(snapshot.data()?.deliveryFeeEgp || 0));
+    });
 
     return () => unsubscribe();
   }, []);
@@ -127,7 +136,7 @@ export default function ManageCart() {
       }
     });
     
-    const deliveryFee = subtotal > 0 ? 50 : 0;
+    const deliveryFee = subtotal > 0 ? deliveryFeeEgp : 0;
     const total = subtotal + deliveryFee;
     
     return { subtotal, deliveryFee, total };
@@ -199,7 +208,7 @@ export default function ManageCart() {
                           <h4 className="text-white font-bold truncate">{item.productDetails?.title || 'منتج غير معروف'}</h4>
                           <p className="text-xs text-charcoal-500 mt-1">{item.productDetails?.brand || 'QUTI Store'}</p>
                           <p className="text-gold-400 font-bold mt-2 font-inter">
-                            ${(item.productDetails?.price || 0).toFixed(2)}
+                            {(item.productDetails?.price || 0).toFixed(2)} EGP
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -239,15 +248,15 @@ export default function ManageCart() {
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between text-charcoal-400">
                       <span>المجموع الفرعي</span>
-                      <span className="text-white font-inter">${subtotal.toFixed(2)}</span>
+                      <span className="text-white font-inter">{subtotal.toFixed(2)} EGP</span>
                     </div>
                     <div className="flex justify-between text-charcoal-400">
                       <span>رسوم التوصيل</span>
-                      <span className="text-white font-inter">${deliveryFee.toFixed(2)}</span>
+                      <span className="text-white font-inter">{deliveryFee.toFixed(2)} EGP</span>
                     </div>
                     <div className="flex justify-between text-lg font-bold text-white pt-3 border-t border-charcoal-800">
                       <span>الإجمالي</span>
-                      <span className="text-gold-400 font-inter">${total.toFixed(2)}</span>
+                      <span className="text-gold-400 font-inter">{total.toFixed(2)} EGP</span>
                     </div>
                   </div>
                 </div>

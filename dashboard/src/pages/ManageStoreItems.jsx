@@ -34,8 +34,10 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
   const [imageOffsetY, setImageOffsetY] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [deliveryFeeEgp, setDeliveryFeeEgp] = useState('0');
   const isBarberStore = ownerScope === 'barber';
 
   useEffect(() => {
@@ -66,6 +68,17 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
 
     return () => unsubscribe();
   }, [isBarberStore, user]);
+
+  useEffect(() => {
+    if (isBarberStore) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'app_settings', 'store'), (snapshot) => {
+      const value = snapshot.data()?.deliveryFeeEgp;
+      setDeliveryFeeEgp(value === undefined || value === null ? '0' : String(value));
+    });
+
+    return () => unsubscribe();
+  }, [isBarberStore]);
 
   const counts = useMemo(() => {
     return items.reduce(
@@ -167,6 +180,27 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
     }
   };
 
+  const saveDeliveryFee = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSettingsSaving(true);
+
+    try {
+      await setDoc(doc(db, 'app_settings', 'store'), {
+        deliveryFeeEgp: Number(deliveryFeeEgp || 0),
+        currency: 'EGP',
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      setSuccess('تم حفظ رسوم التوصيل بالجنيه المصري.');
+    } catch (err) {
+      console.error('Error saving delivery fee:', err);
+      setError('فشل حفظ رسوم التوصيل.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
   const toggleActive = async (item) => {
     await updateDoc(doc(db, 'store_items', item.id), {
       isActive: item.isActive === false,
@@ -205,7 +239,32 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <form onSubmit={handleSubmit} className="xl:col-span-1 glass-panel p-6 rounded-2xl border border-charcoal-800 space-y-4">
+        <div className="xl:col-span-1 space-y-4">
+        {!isBarberStore && (
+          <form onSubmit={saveDeliveryFee} className="glass-panel p-6 rounded-2xl border border-charcoal-800 space-y-4">
+            <div>
+              <h2 className="font-bold text-white">رسوم التوصيل</h2>
+              <p className="text-xs text-charcoal-500 mt-1">تظهر في سلة تطبيق العميل وتُحسب بالجنيه المصري فقط.</p>
+            </div>
+            <Input
+              label="رسوم التوصيل بالجنيه المصري"
+              type="number"
+              min="0"
+              step="0.01"
+              value={deliveryFeeEgp}
+              onChange={(event) => setDeliveryFeeEgp(event.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={settingsSaving}
+              className="w-full h-11 rounded-xl bg-charcoal-800 text-white font-black hover:bg-gold-500 hover:text-charcoal-950 transition disabled:opacity-60"
+            >
+              {settingsSaving ? 'جاري الحفظ...' : 'حفظ رسوم التوصيل'}
+            </button>
+          </form>
+        )}
+
+        <form onSubmit={handleSubmit} className="glass-panel p-6 rounded-2xl border border-charcoal-800 space-y-4">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-3 rounded-xl bg-gold-500/10 text-gold-400 border border-gold-500/20">
               <Plus className="w-5 h-5" />
@@ -321,8 +380,8 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
           <Textarea name="description" label="الوصف" value={form.description} onChange={handleChange} required />
 
           <div className="grid grid-cols-2 gap-3">
-            <Input name="price" label="السعر" type="number" min="0" step="0.01" value={form.price} onChange={handleChange} required />
-            <Input name="oldPrice" label="السعر قبل الخصم" type="number" min="0" step="0.01" value={form.oldPrice} onChange={handleChange} />
+            <Input name="price" label="السعر بالجنيه المصري" type="number" min="0" step="0.01" value={form.price} onChange={handleChange} required />
+            <Input name="oldPrice" label="السعر قبل الخصم بالجنيه المصري" type="number" min="0" step="0.01" value={form.oldPrice} onChange={handleChange} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input name="rating" label="التقييم" type="number" min="0" max="5" step="0.1" value={form.rating} onChange={handleChange} />
@@ -337,7 +396,8 @@ export default function ManageStoreItems({ ownerScope = 'admin' }) {
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
             {saving ? 'جاري الحفظ...' : 'إضافة للمتجر'}
           </button>
-        </form>
+          </form>
+        </div>
 
         <div className="xl:col-span-2 glass-panel rounded-2xl border border-charcoal-800 overflow-hidden">
           <div className="p-6 border-b border-charcoal-800 flex items-center justify-between">
@@ -389,7 +449,7 @@ function StoreItemCard({ item, onToggle, onDelete }) {
               <h3 className="text-white font-bold truncate">{item.title}</h3>
               <p className="text-xs text-charcoal-500 mt-1">{item.brand || 'QUTI Store'} · {typeLabel}</p>
             </div>
-            <span className="shrink-0 text-gold-400 font-black font-inter">${Number(item.price || 0).toFixed(2)}</span>
+            <span className="shrink-0 text-gold-400 font-black font-inter">{Number(item.price || 0).toFixed(2)} EGP</span>
           </div>
           <p className="text-xs text-charcoal-400 mt-3 line-clamp-2">{item.description || 'لا يوجد وصف'}</p>
           <div className="flex flex-wrap items-center gap-2 mt-4">

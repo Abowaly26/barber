@@ -1449,6 +1449,7 @@ class _BookingsTabState extends State<_BookingsTab> {
                     itemBuilder: (context, index) {
                       final item = items[index];
                       return StoreProductCard(
+                        productId: item.id,
                         title: item.title,
                         brand: item.brand,
                         price: item.formattedPrice,
