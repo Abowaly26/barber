@@ -10,7 +10,6 @@ import 'package:app/features/ai_flow/presentation/views/ai_flow_view.dart';
 import 'package:app/features/store_flow/data/models/store_item_model.dart';
 import 'package:app/features/store_flow/data/repos/store_repository.dart';
 import 'package:app/features/store_flow/presentation/views/store_flow_view.dart';
-import 'package:app/features/provider_flow/presentation/views/provider_flow_view.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/home_appbar.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/banner_slider.dart';
 import 'package:app/features/main_shell/presentation/views/widgets/custom_bottom_nav.dart';
@@ -1446,6 +1445,9 @@ class _BookingsTabState extends State<_BookingsTab> {
                         badge: item.badge,
                         imageUrl: item.imageUrl,
                         description: item.description,
+                        barberId: item.barberId ?? _selectedBarberId,
+                        barberName: item.barberName ?? _selectedBarberName,
+                        itemType: item.type.value,
                         width: 160.w,
                       );
                     },

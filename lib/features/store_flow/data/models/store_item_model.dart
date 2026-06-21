@@ -50,6 +50,8 @@ class StoreItemModel {
   final String? badge;
   final String imageUrl;
   final StoreItemType type;
+  final String? barberId;
+  final String? barberName;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -66,6 +68,8 @@ class StoreItemModel {
     required this.badge,
     required this.imageUrl,
     required this.type,
+    this.barberId,
+    this.barberName,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -88,6 +92,8 @@ class StoreItemModel {
           : map['badge']?.toString(),
       imageUrl: map['imageUrl']?.toString() ?? '',
       type: storeItemTypeFromString(map['type']?.toString()),
+      barberId: map['barberId']?.toString(),
+      barberName: map['barberName']?.toString(),
       isActive: map['isActive'] != false,
       createdAt: _dateFromValue(map['createdAt']),
       updatedAt: _dateFromValue(map['updatedAt']),
@@ -106,6 +112,8 @@ class StoreItemModel {
       'badge': badge,
       'imageUrl': imageUrl,
       'type': type.value,
+      'barberId': barberId,
+      'barberName': barberName,
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),

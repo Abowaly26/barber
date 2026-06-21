@@ -254,6 +254,9 @@ class StoreCartItem {
   final String price;
   final double unitPrice;
   final String? imageUrl;
+  final String? barberId;
+  final String? barberName;
+  final String type;
   int quantity;
 
   StoreCartItem({
@@ -263,6 +266,9 @@ class StoreCartItem {
     required this.price,
     required this.unitPrice,
     this.imageUrl,
+    this.barberId,
+    this.barberName,
+    this.type = 'product',
     this.quantity = 1,
   });
 
@@ -277,6 +283,9 @@ class StoreCartItem {
         'brand': brand,
         'price': unitPrice,
         'imageUrl': imageUrl,
+        'barberId': barberId,
+        'barberName': barberName,
+        'type': type,
       },
     };
   }
@@ -290,6 +299,9 @@ class StoreCartItem {
       'quantity': quantity,
       'lineTotal': lineTotal,
       'imageUrl': imageUrl,
+      'barberId': barberId,
+      'barberName': barberName,
+      'type': type,
     };
   }
 }
@@ -327,6 +339,9 @@ class StoreCartController {
     required String brand,
     required String price,
     String? imageUrl,
+    String? barberId,
+    String? barberName,
+    String type = 'product',
     int quantity = 1,
   }) {
     final updated = List<StoreCartItem>.from(items.value);
@@ -348,6 +363,9 @@ class StoreCartController {
           price: price,
           unitPrice: priceValue(price),
           imageUrl: imageUrl,
+          barberId: barberId,
+          barberName: barberName,
+          type: type,
           quantity: quantity,
         ),
       );
@@ -428,6 +446,13 @@ class StoreCartController {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      final timestamp = FieldValue.serverTimestamp();
+      var customerName = user.displayName ?? 'Store Customer';
+      try {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        customerName = userDoc.data()?['name']?.toString() ?? customerName;
+      } catch (_) {}
+
       final batch = FirebaseFirestore.instance.batch();
       final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderNumber);
       final cartRef = FirebaseFirestore.instance.collection('carts').doc(user.uid);
@@ -444,6 +469,14 @@ class StoreCartController {
         'status': 'placed',
         'createdAt': now.toIso8601String(),
       });
+      _addOrderMessagesToBatch(
+        batch: batch,
+        orderNumber: orderNumber,
+        orderItems: orderItems,
+        customerId: user.uid,
+        customerName: customerName,
+        createdAt: timestamp,
+      );
       batch.set(cartRef, {
         'userId': user.uid,
         'items': [],
@@ -455,6 +488,95 @@ class StoreCartController {
     lastOrder = draft;
     items.value = [];
     return draft;
+  }
+
+  static void _addOrderMessagesToBatch({
+    required WriteBatch batch,
+    required String orderNumber,
+    required List<StoreCartItem> orderItems,
+    required String customerId,
+    required String customerName,
+    required FieldValue createdAt,
+  }) {
+    if (orderItems.isEmpty) return;
+
+    final adminItems = orderItems.where((item) => (item.barberId ?? '').isEmpty).toList();
+    if (adminItems.isNotEmpty) {
+      _addChatMessage(
+        batch: batch,
+        chatId: 'admin_store_orders',
+        ownerId: 'admin',
+        ownerName: 'Admin',
+        customerId: customerId,
+        customerName: customerName,
+        message: _buildOrderMessage(orderNumber, adminItems),
+        timestamp: createdAt,
+        isAdminChat: true,
+      );
+    }
+
+    final barberIds = orderItems
+        .map((item) => item.barberId ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final barberId in barberIds) {
+      final barberItems = orderItems.where((item) => item.barberId == barberId).toList();
+      _addChatMessage(
+        batch: batch,
+        chatId: '${customerId}_$barberId',
+        ownerId: barberId,
+        ownerName: barberItems.first.barberName ?? 'Barber',
+        customerId: customerId,
+        customerName: customerName,
+        message: _buildOrderMessage(orderNumber, barberItems),
+        timestamp: createdAt,
+      );
+    }
+  }
+
+  static void _addChatMessage({
+    required WriteBatch batch,
+    required String chatId,
+    required String ownerId,
+    required String ownerName,
+    required String customerId,
+    required String customerName,
+    required String message,
+    required FieldValue timestamp,
+    bool isAdminChat = false,
+  }) {
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+    final messageRef = chatRef.collection('messages').doc();
+
+    batch.set(chatRef, {
+      'customerId': customerId,
+      'customerName': customerName,
+      if (isAdminChat) 'adminId': ownerId else 'barberId': ownerId,
+      if (isAdminChat) 'adminName': ownerName else 'barberName': ownerName,
+      'lastMessage': message,
+      'lastMessageTime': timestamp,
+      'unreadByBarber': FieldValue.increment(1),
+      if (isAdminChat) 'chatType': 'admin_store_orders',
+    }, SetOptions(merge: true));
+
+    batch.set(messageRef, {
+      'senderId': 'system',
+      'senderName': 'System',
+      'message': message,
+      'timestamp': timestamp,
+      'type': isAdminChat ? 'admin_store_order' : 'barber_store_order',
+    });
+  }
+
+  static String _buildOrderMessage(
+    String orderNumber,
+    List<StoreCartItem> orderItems,
+  ) {
+    final itemsTotal = orderItems.fold<double>(0, (total, item) => total + item.lineTotal);
+    final lines = orderItems
+        .map((item) => '- ${item.title} x${item.quantity} (${formatEgp(item.lineTotal)})')
+        .join('\n');
+    return 'طلب جديد من التطبيق\nرقم الطلب: $orderNumber\n$lines\nالإجمالي: ${formatEgp(itemsTotal)}\nالدفع: عند الاستلام';
   }
 }
 
@@ -803,6 +925,9 @@ class _StoreItemsSection extends StatelessWidget {
                     badge: item.badge,
                     imageUrl: item.imageUrl,
                     description: item.description,
+                    barberId: item.barberId,
+                    barberName: item.barberName,
+                    itemType: item.type.value,
                     width: 160,
                   );
                 },
@@ -978,6 +1103,9 @@ class StoreProductsScreen extends StatelessWidget {
                                 badge: item.badge,
                                 imageUrl: item.imageUrl,
                                 description: item.description,
+                                barberId: item.barberId,
+                                barberName: item.barberName,
+                                itemType: item.type.value,
                                 isGrid: true,
                               );
                             },
@@ -1030,6 +1158,9 @@ class StoreProductCard extends StatelessWidget {
   final String? badge;
   final String? imageUrl;
   final String? description;
+  final String? barberId;
+  final String? barberName;
+  final String itemType;
   final Color? badgeColor;
   final double? width;
   final bool isGrid;
@@ -1045,6 +1176,9 @@ class StoreProductCard extends StatelessWidget {
     this.badge,
     this.imageUrl,
     this.description,
+    this.barberId,
+    this.barberName,
+    this.itemType = 'product',
     this.badgeColor,
     this.width,
     this.isGrid = false,
@@ -1062,6 +1196,9 @@ class StoreProductCard extends StatelessWidget {
         brand: brand,
         price: price,
         imageUrl: imageUrl,
+        barberId: barberId,
+        barberName: barberName,
+        type: itemType,
       );
 
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -1089,6 +1226,9 @@ class StoreProductCard extends StatelessWidget {
             badge: badge,
             imageUrl: imageUrl,
             description: description,
+            barberId: barberId,
+            barberName: barberName,
+            itemType: itemType,
           ),
         ),
       ),
@@ -1314,6 +1454,9 @@ class StoreProductDetailScreen extends StatefulWidget {
   final String? badge;
   final String? imageUrl;
   final String? description;
+  final String? barberId;
+  final String? barberName;
+  final String itemType;
 
   const StoreProductDetailScreen({
     super.key,
@@ -1326,6 +1469,9 @@ class StoreProductDetailScreen extends StatefulWidget {
     this.badge,
     this.imageUrl,
     this.description,
+    this.barberId,
+    this.barberName,
+    this.itemType = 'product',
   });
 
   @override
@@ -1702,6 +1848,9 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                 brand: widget.brand,
                 price: widget.price,
                 imageUrl: widget.imageUrl,
+                barberId: widget.barberId,
+                barberName: widget.barberName,
+                type: widget.itemType,
                 quantity: _quantity,
               );
               Navigator.push(
@@ -2143,43 +2292,27 @@ class StoreCheckoutScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Delivery Address',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const StoreDeliveryDetailsScreen(),
-                        ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.borderGrey),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.location_on_outlined, color: AppColors.primary),
-                            SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Home', style: TextStyle(fontWeight: FontWeight.bold)),
-                                  Text(
-                                    'No delivery address selected',
-                                    style: TextStyle(color: AppColors.textGrey, fontSize: 13),
-                                  ),
-                                ],
+                      child: const Row(
+                        children: [
+                          Icon(Icons.bolt_rounded, color: AppColors.primary),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'راجع الطلب واضغط تأكيد. الإدارة أو الحلاق سيستلم تفاصيل الطلب تلقائياً في الرسائل.',
+                              style: TextStyle(
+                                color: AppColors.textDark,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            Icon(Icons.chevron_right, color: AppColors.textGrey),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -2237,50 +2370,6 @@ class StoreCheckoutScreen extends StatelessWidget {
                           Icon(Icons.check_circle, color: AppColors.primary),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Promo Code',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            decoration: InputDecoration(
-                              hintText: 'Enter promo code',
-                              prefixIcon: const Icon(
-                                Icons.local_offer_outlined,
-                                color: AppColors.textGrey,
-                                size: 20,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: AppColors.borderGrey),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          onPressed: () {},
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryLight,
-                            foregroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            'Apply',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 32),
                     _buildPriceRow('Subtotal', StoreCartController.formatEgp(subtotal)),
@@ -2369,271 +2458,7 @@ class StoreCheckoutScreen extends StatelessWidget {
 }
 
 // ==========================================
-// 6. DELIVERY DETAILS SCREEN
-// ==========================================
-class StoreDeliveryDetailsScreen extends StatelessWidget {
-  const StoreDeliveryDetailsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Delivery Details'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Saved Addresses',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.location_on_outlined,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Home',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'Default',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          '123 Main Street, Suite 101\nDowntown City, CA 90001',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 13,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.check_circle, color: AppColors.primary),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.borderGrey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.business, color: AppColors.textGrey),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Office',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '456 Business Ave, Floor 12\nCommerce Park, CA 90210',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 13,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-                side: const BorderSide(color: AppColors.borderGrey),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add, color: AppColors.primary),
-                  SizedBox(width: 8),
-                  Text(
-                    'Add New Address',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Delivery Method',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary),
-                borderRadius: BorderRadius.circular(12),
-                color: AppColors.primaryLight.withOpacity(0.5),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.local_shipping_outlined, color: AppColors.primary),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Standard Delivery',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '3-5 business days',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    '5.99 EGP',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.borderGrey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.flight_takeoff, color: AppColors.textGrey),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Express Delivery',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '1-2 business days',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    '12.99 EGP',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Delivery Notes',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'Add delivery instructions (optional)',
-                hintStyle: const TextStyle(
-                  color: AppColors.textGrey,
-                  fontSize: 14,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.borderGrey),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
-      bottomSheet: PrimaryBottomButton(
-        text: 'Continue',
-        onPressed: () => Navigator.pop(context),
-      ),
-    );
-  }
-}
-
-// ==========================================
-// 7. ORDER SUCCESS SCREEN
+// 6. ORDER SUCCESS SCREEN
 // ==========================================
 class StoreOrderSuccessScreen extends StatelessWidget {
   final StoreOrderDraft? order;
@@ -2727,11 +2552,11 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                     ),
                     const Spacer(),
                     ElevatedButton(
-                      onPressed: () => Navigator.pushReplacement(
+                      onPressed: () => Navigator.pushNamedAndRemoveUntil(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => StoreOrderTrackingScreen(order: currentOrder),
-                        ),
+                        '/main-shell',
+                        (route) => false,
+                        arguments: {'initialIndex': 1},
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
@@ -2740,43 +2565,10 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.arrow_forward,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Track Order',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: () => Navigator.popUntil(
-                        context,
-                        (route) => route.isFirst,
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 56),
-                        side: const BorderSide(color: AppColors.borderGrey),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(28),
-                        ),
-                      ),
                       child: const Text(
                         'Continue Shopping',
                         style: TextStyle(
-                          color: AppColors.textDark,
+                          color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -2828,396 +2620,3 @@ class StoreOrderSuccessScreen extends StatelessWidget {
   }
 }
 
-// ==========================================
-// 8. ORDER TRACKING SCREEN
-// ==========================================
-class StoreOrderTrackingScreen extends StatelessWidget {
-  final StoreOrderDraft? order;
-
-  const StoreOrderTrackingScreen({super.key, this.order});
-
-  StoreOrderDraft? get _currentOrder => order ?? StoreCartController.lastOrder;
-
-  @override
-  Widget build(BuildContext context) {
-    final currentOrder = _currentOrder;
-    final orderDate = currentOrder?.createdAt ?? DateTime.now();
-    final dateLabel = '${orderDate.year}-${orderDate.month.toString().padLeft(2, '0')}-${orderDate.day.toString().padLeft(2, '0')}';
-
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Order Details'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      currentOrder?.orderNumber ?? 'Pending Order',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${currentOrder?.itemCount ?? 0} items · $dateLabel',
-                      style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.warningOrange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.local_shipping_outlined,
-                        color: AppColors.warningOrange,
-                        size: 14,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'In transit',
-                        style: TextStyle(
-                          color: AppColors.warningOrange,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Tracking Status',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
-            _buildTimelineItem(
-              Icons.check_circle_outline,
-              'Order Placed',
-              dateLabel,
-              true,
-              isFirst: true,
-            ),
-            _buildTimelineItem(
-              Icons.inventory_2_outlined,
-              'Processing',
-              dateLabel,
-              true,
-            ),
-            _buildTimelineItem(
-              Icons.local_shipping_outlined,
-              'Shipped',
-              'Preparing your order',
-              true,
-              isActive: true,
-            ),
-            _buildTimelineItem(
-              Icons.home_outlined,
-              'Out for Delivery',
-              currentOrder == null ? '' : 'Expected within 3-5 days',
-              false,
-            ),
-            _buildTimelineItem(
-              Icons.person_outline,
-              'Delivered',
-              '',
-              false,
-              isLast: true,
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Ordered Items',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.borderGrey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  ...(currentOrder?.items ?? const <StoreCartItem>[]).map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildOrderedItemRow(
-                        item.title,
-                        'Qty: ${item.quantity}',
-                        StoreCartController.formatEgp(item.lineTotal),
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(),
-                  ),
-                  _buildPriceRow('Subtotal', StoreCartController.formatEgp(currentOrder?.subtotal ?? 0)),
-                  _buildPriceRow('Delivery', StoreCartController.formatEgp(currentOrder?.deliveryFee ?? 0)),
-                  const SizedBox(height: 8),
-                  _buildPriceRow('Total', StoreCartController.formatEgp(currentOrder?.total ?? 0), isTotal: true),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Delivery Address',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '123 Main Street, Suite 101 Downtown City, CA 90001',
-              style: TextStyle(
-                color: AppColors.textGrey,
-                height: 1.5,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
-      bottomSheet: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: AppColors.primary),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.call_outlined,
-                        color: AppColors.primary,
-                        size: 18,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Contact',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const StoreHomeScreen()),
-                    (route) => route.isFirst,
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Done',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimelineItem(
-    IconData icon,
-    String title,
-    String subtitle,
-    bool isCompleted, {
-    bool isActive = false,
-    bool isFirst = false,
-    bool isLast = false,
-  }) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 40,
-            child: Column(
-              children: [
-                if (!isFirst)
-                  Container(
-                    width: 2,
-                    height: 20,
-                    color: isCompleted
-                        ? AppColors.primary
-                        : AppColors.borderGrey,
-                  ),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: isCompleted ? AppColors.primary : Colors.white,
-                    border: Border.all(
-                      color: isCompleted
-                          ? AppColors.primary
-                          : AppColors.borderGrey,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: isCompleted ? Colors.white : AppColors.borderGrey,
-                  ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      color: isCompleted && !isActive
-                          ? AppColors.primary
-                          : AppColors.borderGrey,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 20.0, bottom: 32.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: isCompleted
-                          ? AppColors.textDark
-                          : AppColors.textGrey,
-                    ),
-                  ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrderedItemRow(String name, String qty, String price) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Text(
-              qty,
-              style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
-            ),
-          ],
-        ),
-        Text(
-          price,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPriceRow(String label, String amount, {bool isTotal = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: isTotal ? AppColors.textDark : AppColors.textGrey,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-              fontSize: isTotal ? 16 : 14,
-            ),
-          ),
-          Text(
-            amount,
-            style: TextStyle(
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-              fontSize: isTotal ? 16 : 14,
-              color: isTotal ? AppColors.primary : AppColors.textDark,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

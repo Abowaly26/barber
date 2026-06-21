@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import ManageStoreItems from './ManageStoreItems';
 import ManageBanners from './ManageBanners';
 import ManageCart from './ManageCart';
+import ManageMessages from './ManageMessages';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -82,6 +83,7 @@ export default function AdminDashboard() {
           <Route path="/store" element={<ManageStoreItems />} />
           <Route path="/banners" element={<ManageBanners />} />
           <Route path="/cart" element={<ManageCart />} />
+          <Route path="/messages" element={<ManageMessages scope="admin" />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       </main>

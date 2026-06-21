@@ -24,8 +24,9 @@ import {
   Sparkles
 } from 'lucide-react';
 
-export default function ManageMessages() {
+export default function ManageMessages({ scope = 'barber' }) {
   const { user } = useAuth();
+  const isAdminScope = scope === 'admin';
   const [chats, setChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -42,7 +43,7 @@ export default function ManageMessages() {
   const onlineMarkedChatIdsRef = useRef(new Set());
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAdminScope) return;
 
     const markBarberPresence = (isOnline) => {
       chatIdsRef.current.forEach((chatId) => {
@@ -60,10 +61,10 @@ export default function ManageMessages() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       markBarberPresence(false);
     };
-  }, [user]);
+  }, [user, isAdminScope]);
 
   useEffect(() => {
-    if (!user || chats.length === 0) return;
+    if (!user || isAdminScope || chats.length === 0) return;
 
     chatIdsRef.current = chats.map((chat) => chat.id);
     chatIdsRef.current.forEach((chatId) => {
@@ -75,25 +76,24 @@ export default function ManageMessages() {
         barberLastSeen: serverTimestamp()
       }, { merge: true }).catch(() => {});
     });
-  }, [user, chats]);
+  }, [user, isAdminScope, chats]);
 
   useEffect(() => {
-    if (!user || !activeChat) return;
+    if (!user || isAdminScope || !activeChat) return;
 
     setDoc(doc(db, 'chats', activeChat.id), {
       barberOnline: true,
       barberLastSeen: serverTimestamp()
     }, { merge: true }).catch(() => {});
-  }, [user, activeChat?.id]);
+  }, [user, isAdminScope, activeChat?.id]);
 
-  // 1. Fetch barber's chat list in real-time
+  // 1. Fetch chat list in real-time
   useEffect(() => {
     if (!user) return;
 
-    const chatsQuery = query(
-      collection(db, 'chats'),
-      where('barberId', '==', user.uid)
-    );
+    const chatsQuery = isAdminScope
+      ? query(collection(db, 'chats'), where('chatType', '==', 'admin_store_orders'))
+      : query(collection(db, 'chats'), where('barberId', '==', user.uid));
 
     const unsubscribe = onSnapshot(chatsQuery, (snapshot) => {
       const list = [];
@@ -114,11 +114,11 @@ export default function ManageMessages() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isAdminScope]);
 
   // 2. Fetch available slots count of the barber in real-time
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAdminScope) return;
 
     const slotsQuery = query(
       collection(db, 'appointments'),
@@ -137,7 +137,7 @@ export default function ManageMessages() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isAdminScope]);
 
   // 3. Listen to messages for the active chat
   useEffect(() => {
@@ -189,7 +189,7 @@ export default function ManageMessages() {
     try {
       const messageData = {
         senderId: user.uid,
-        senderName: activeChat.barberName || 'Barber',
+        senderName: isAdminScope ? 'Admin' : activeChat.barberName || 'Barber',
         message: textMsg,
         timestamp: serverTimestamp(),
         type: 'text'
@@ -393,6 +393,10 @@ export default function ManageMessages() {
   const activeChatData = chats.find((chat) => chat.id === activeChat?.id) || activeChat;
   const activeInitial = activeChatData?.customerName?.charAt(0)?.toUpperCase() || 'U';
   const activeCustomerOnline = activeChatData?.customerOnline === true;
+  const pageTitle = isAdminScope ? 'رسائل طلبات المتجر' : 'Messages';
+  const pageDescription = isAdminScope
+    ? 'تابع رسائل الطلبات التي تصل للإدارة تلقائياً بعد إتمام checkout في المتجر.'
+    : 'تابع محادثات العملاء، رد بسرعة، واقفل المواعيد المتاحة من نفس الشاشة.';
 
   return (
     <div className="animate-fade-in h-auto min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
@@ -401,11 +405,11 @@ export default function ManageMessages() {
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold-500/20 bg-gold-500/10 px-3 py-1 text-xs font-bold text-gold-300">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>مركز التواصل</span>
+              <span>{isAdminScope ? 'مركز طلبات المتجر' : 'مركز التواصل'}</span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">Messages</h1>
+            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">{pageTitle}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-charcoal-400">
-              تابع محادثات العملاء، رد بسرعة، واقفل المواعيد المتاحة من نفس الشاشة.
+              {pageDescription}
             </p>
           </div>
 
@@ -419,8 +423,8 @@ export default function ManageMessages() {
               <div className="mt-1 text-[10px] font-bold text-charcoal-500">غير مقروء</div>
             </div>
             <div className="rounded-2xl border border-charcoal-800 bg-black/30 p-3 text-center">
-              <div className="text-xl font-black text-white">{slots.length}</div>
-              <div className="mt-1 text-[10px] font-bold text-charcoal-500">مواعيد متاحة</div>
+              <div className="text-xl font-black text-white">{isAdminScope ? chats.length : slots.length}</div>
+              <div className="mt-1 text-[10px] font-bold text-charcoal-500">{isAdminScope ? 'طلبات متجر' : 'مواعيد متاحة'}</div>
             </div>
           </div>
         </div>
@@ -440,7 +444,7 @@ export default function ManageMessages() {
                 </span>
               )}
             </div>
-            <p className="mt-2 text-xs font-medium text-charcoal-500">اختار عميل لعرض المحادثة كاملة.</p>
+            <p className="mt-2 text-xs font-medium text-charcoal-500">{isAdminScope ? 'اختار طلب لعرض تفاصيل الرسائل.' : 'اختار عميل لعرض المحادثة كاملة.'}</p>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
@@ -505,7 +509,7 @@ export default function ManageMessages() {
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-charcoal-800 text-center text-sm text-charcoal-500">
                 <MessageSquare className="mb-3 h-8 w-8 text-charcoal-700" />
-                لا توجد محادثات نشطة حالياً
+                {isAdminScope ? 'لا توجد رسائل طلبات متجر حالياً' : 'لا توجد محادثات نشطة حالياً'}
               </div>
             )}
           </div>
@@ -538,7 +542,7 @@ export default function ManageMessages() {
                   messages.map((msg) => {
                     const isSystem = msg.senderId === 'system';
                     const isMe = msg.senderId === user.uid;
-                    const isBookingRequest = msg.appointmentId || msg.slotId || msg.type === 'booking_request';
+                    const isBookingRequest = !isAdminScope && (msg.appointmentId || msg.slotId || msg.type === 'booking_request');
                     const bookingStatus = bookingMessageStatuses[msg.id] || msg.appointmentStatus || msg.status;
                     const isBookingClosed = bookingStatus === 'booked' || bookingStatus === 'cancelled';
                     const isUpdatingThisBooking = updatingAppointmentMessageId === msg.id;
@@ -636,7 +640,7 @@ export default function ManageMessages() {
                     type="text"
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="اكتب رسالة واضحة للعميل..."
+                    placeholder={isAdminScope ? 'اكتب رد للإدارة/العميل...' : 'اكتب رسالة واضحة للعميل...'}
                     className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder-charcoal-600 outline-none"
                   />
                   <button
@@ -655,7 +659,7 @@ export default function ManageMessages() {
                 <MessageSquare className="h-9 w-9" />
               </div>
               <h3 className="text-lg font-black text-white">اختار محادثة</h3>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-charcoal-500">اختار عميل من قائمة المحادثات لعرض الرسائل والرد عليه بشكل مباشر.</p>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-charcoal-500">اختار رسالة من القائمة لعرض التفاصيل والرد بشكل مباشر.</p>
             </div>
           )}
         </section>

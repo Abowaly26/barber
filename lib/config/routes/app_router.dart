@@ -35,8 +35,9 @@ class AppRouter {
 
       // Main Shell (Home with bottom nav)
       case MainShell.routeName:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
         return MaterialPageRoute(
-          builder: (_) => const MainShell(),
+          builder: (_) => MainShell(initialIndex: args['initialIndex'] ?? 0),
           settings: settings,
         );
 

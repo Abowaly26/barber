@@ -22,6 +22,7 @@ export default function Sidebar({ isMobileOpen, onMobileClose }) {
     { to: '/admin/barbers', label: 'إدارة الحلاقين', icon: Scissors },
     { to: '/admin/store', label: 'إدارة متجر QUTI', icon: ShoppingBag },
     { to: '/admin/cart', label: 'إدارة السلات', icon: ShoppingBag },
+    { to: '/admin/messages', label: 'رسائل الطلبات', icon: MessageSquare },
     { to: '/admin/banners', label: 'إدارة بنرات التطبيق', icon: Images },
   ];
 
