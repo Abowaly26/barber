@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+﻿// ignore_for_file: deprecated_member_use
 
 import 'dart:async';
 
@@ -576,7 +576,11 @@ class StoreCartController {
     final lines = orderItems
         .map((item) => '- ${item.title} x${item.quantity} (${formatEgp(item.lineTotal)})')
         .join('\n');
-    return 'طلب جديد من التطبيق\nرقم الطلب: $orderNumber\n$lines\nالإجمالي: ${formatEgp(itemsTotal)}\nالدفع: عند الاستلام';
+    return 'New order from app\n'
+        'Order number: $orderNumber\n'
+        '$lines\n'
+        'Total: ${formatEgp(itemsTotal)}\n'
+        'Payment: Cash on delivery';
   }
 }
 
@@ -594,7 +598,7 @@ class _StoreImageBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -632,7 +636,7 @@ class _StoreGradientBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: slide.gradient.last.withValues(alpha: 0.3),
+            color: slide.gradient.last.withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -648,7 +652,7 @@ class _StoreGradientBanner extends StatelessWidget {
               height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: slide.accentColor.withValues(alpha: 0.15),
+                color: slide.accentColor.withOpacity(0.15),
               ),
             ),
           ),
@@ -660,7 +664,7 @@ class _StoreGradientBanner extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: slide.accentColor.withValues(alpha: 0.1),
+                color: slide.accentColor.withOpacity(0.1),
               ),
             ),
           ),
@@ -675,7 +679,7 @@ class _StoreGradientBanner extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: slide.accentColor.withValues(alpha: 0.2),
+                    color: slide.accentColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -817,11 +821,18 @@ class StoreHomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Banner Slider ──
+            // â”€â”€ Banner Slider â”€â”€
             const StoreBannerSlider(),
             const SizedBox(height: 24),
 
-            _buildSectionHeader('Offers', 'See All', () {}),
+            _buildSectionHeader(
+              'Offers',
+              'See All',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StoreOffersScreen()),
+              ),
+            ),
             const _StoreItemsSection(
               type: StoreItemType.offer,
               emptyMessage: 'No offers added yet',
@@ -985,40 +996,7 @@ class StoreProductsScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          // Search
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search, color: AppColors.textGrey),
-                filled: true,
-                fillColor: AppColors.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-            ),
-          ),
-
-          // Filters
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                _buildFilterChip('All', true),
-                _buildFilterChip('Hair Styling', false),
-                _buildFilterChip('Beard Care', false),
-                _buildFilterChip('Hair Care', false),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Expanded(
+Expanded(
             child: StreamBuilder(
               stream: StoreRepository().streamItems(
                 type: StoreItemType.product,
@@ -1046,41 +1024,7 @@ class StoreProductsScreen extends StatelessWidget {
 
                     return Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${items.length} products found',
-                                style: const TextStyle(
-                                  color: AppColors.textGrey,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const Row(
-                                children: [
-                                  Icon(
-                                    Icons.swap_vert,
-                                    size: 16,
-                                    color: AppColors.primary,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Sort',
-                                    style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
+Expanded(
                           child: GridView.builder(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             gridDelegate:
@@ -1123,26 +1067,101 @@ class StoreProductsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterChip(String label, bool isSelected) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isSelected ? AppColors.primary : AppColors.background,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isSelected ? AppColors.primary : AppColors.borderGrey,
+
+}
+
+// ==========================================
+// 3. OFFERS LIST SCREEN
+// ==========================================
+class StoreOffersScreen extends StatelessWidget {
+  const StoreOffersScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 20),
+          onPressed: () => Navigator.pop(context),
         ),
+        title: const Text('Offers'),
+        centerTitle: true,
+        actions: const [StoreCartAction(), SizedBox(width: 8)],
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? Colors.white : AppColors.textDark,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        ),
+      body: Column(
+        children: [
+Expanded(
+            child: StreamBuilder(
+              stream: StoreRepository().streamItems(
+                type: StoreItemType.offer,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final result = snapshot.data;
+                if (result == null) {
+                  return const _StoreEmptySection(
+                    message: 'No offers added yet',
+                  );
+                }
+
+                return result.fold(
+                  (failure) => _StoreEmptySection(message: failure.message),
+                  (items) {
+                    if (items.isEmpty) {
+                      return const _StoreEmptySection(
+                        message: 'No offers added yet',
+                      );
+                    }
+
+                    return Column(
+                      children: [
+Expanded(
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.65,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                ),
+                            itemCount: items.length,
+                            itemBuilder: (context, index) {
+                              final item = items[index];
+                              return StoreProductCard(
+                                productId: item.id,
+                                title: item.title,
+                                brand: item.brand,
+                                price: item.formattedPrice,
+                                oldPrice: item.formattedOldPrice,
+                                rating: item.formattedRating,
+                                badge: item.badge,
+                                imageUrl: item.imageUrl,
+                                description: item.description,
+                                barberId: item.barberId,
+                                barberName: item.barberName,
+                                itemType: item.type.value,
+                                isGrid: true,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
+
+
 }
 
 // ==========================================
@@ -1480,7 +1499,6 @@ class StoreProductDetailScreen extends StatefulWidget {
 }
 
 class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
-  String _selectedSize = 'Regular';
   int _quantity = 1;
 
   String get _favoriteId => widget.productId.isNotEmpty
@@ -1759,19 +1777,6 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   _buildSectionCard(
-                    title: 'Size',
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _buildSizeChip('Regular'),
-                        _buildSizeChip('250ml'),
-                        _buildSizeChip('500ml'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _buildSectionCard(
                     title: 'Quantity',
                     child: Container(
                       height: 48,
@@ -1967,31 +1972,7 @@ class _StoreProductDetailScreenState extends State<StoreProductDetailScreen> {
     );
   }
 
-  Widget _buildSizeChip(String label) {
-    bool isSelected = _selectedSize == label;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedSize = label),
-      child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white,
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.borderGrey,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : AppColors.textDark,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildQuantityBtn(
     IconData icon,
@@ -2305,7 +2286,7 @@ class StoreCheckoutScreen extends StatelessWidget {
                           SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'راجع الطلب واضغط تأكيد. الإدارة أو الحلاق سيستلم تفاصيل الطلب تلقائياً في الرسائل.',
+                              'Ø±Ø§Ø¬Ø¹ Ø§Ù„Ø·Ù„Ø¨ ÙˆØ§Ø¶ØºØ· ØªØ£ÙƒÙŠØ¯. Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© Ø£Ùˆ Ø§Ù„Ø­Ù„Ø§Ù‚ Ø³ÙŠØ³ØªÙ„Ù… ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨ ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ ÙÙŠ Ø§Ù„Ø±Ø³Ø§Ø¦Ù„.',
                               style: TextStyle(
                                 color: AppColors.textDark,
                                 fontWeight: FontWeight.w700,
@@ -2505,7 +2486,9 @@ class StoreOrderSuccessScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'Your order has been successfully\nplaced. You can track your order status\nanytime.',
+                      'Your order has been successfully\n'
+                      'placed. You can track your order status\n'
+                      'anytime.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.textGrey, height: 1.5),
                     ),
@@ -2619,4 +2602,20 @@ class StoreOrderSuccessScreen extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -53,15 +53,7 @@ class FirestoreService {
     }
   }
 
-  /// Get a single document from a collection
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [documentId]: ID of the document to retrieve
-  ///
-  /// Returns:
-  /// - Right(Map) containing document data on success
-  /// - Left(Failure) on error or if document doesn't exist
+  
   Future<Either<Failure, Map<String, dynamic>>> getDocument({
     required String collection,
     required String documentId,
@@ -100,16 +92,6 @@ class FirestoreService {
     }
   }
 
-  /// Get multiple documents from a collection with optional query
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [queryBuilder]: Optional function to build custom queries
-  ///   Example: (ref) => ref.where('userId', isEqualTo: userId).limit(10)
-  ///
-  /// Returns:
-  /// - Right(List) containing document data on success
-  /// - Left(Failure) on error
   Future<Either<Failure, List<Map<String, dynamic>>>> getDocuments({
     required String collection,
     Query<Map<String, dynamic>>? Function(
@@ -154,16 +136,6 @@ class FirestoreService {
     }
   }
 
-  /// Update a document in a collection
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [documentId]: ID of the document to update
-  /// - [data]: Map containing the fields to update
-  ///
-  /// Returns:
-  /// - Right(void) on success
-  /// - Left(Failure) on error
   Future<Either<Failure, void>> updateDocument({
     required String collection,
     required String documentId,
@@ -188,15 +160,6 @@ class FirestoreService {
     }
   }
 
-  /// Delete a document from a collection
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [documentId]: ID of the document to delete
-  ///
-  /// Returns:
-  /// - Right(void) on success
-  /// - Left(Failure) on error
   Future<Either<Failure, void>> deleteDocument({
     required String collection,
     required String documentId,
@@ -220,15 +183,6 @@ class FirestoreService {
     }
   }
 
-  /// Stream a collection for real-time updates
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [queryBuilder]: Optional function to build custom queries
-  ///   Example: (ref) => ref.where('userId', isEqualTo: userId).orderBy('createdAt')
-  ///
-  /// Returns:
-  /// - Stream of Either containing List of documents or Failure
   Stream<Either<Failure, List<Map<String, dynamic>>>> streamCollection({
     required String collection,
     Query<Map<String, dynamic>>? Function(
@@ -287,16 +241,7 @@ class FirestoreService {
     }
   }
 
-  /// Check if a document exists in a collection
-  ///
-  /// Parameters:
-  /// - [collection]: Name of the Firestore collection
-  /// - [documentId]: ID of the document to check
-  ///
-  /// Returns:
-  /// - Right(true) if document exists
-  /// - Right(false) if document doesn't exist
-  /// - Left(Failure) on error
+
   Future<Either<Failure, bool>> documentExists({
     required String collection,
     required String documentId,

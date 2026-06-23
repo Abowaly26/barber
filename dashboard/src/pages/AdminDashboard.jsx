@@ -319,6 +319,7 @@ function ManageBarbers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState('');
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [editingBarber, setEditingBarber] = useState(null); // Track barber being edited
 
   // Form Fields
   const [name, setName] = useState('');
@@ -349,8 +350,14 @@ function ManageBarbers() {
 
   const handleAddBarber = async (e) => {
     e.preventDefault();
-    if (!name || !email || !password || !phone || !address) {
+    if (!name || !email || !phone || !address) {
       setError('الرجاء ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    // Password is required only for new barbers, not for editing
+    if (!editingBarber && !password) {
+      setError('الرجاء إدخال كلمة المرور للحساب الجديد');
       return;
     }
 
@@ -358,34 +365,50 @@ function ManageBarbers() {
     setError('');
 
     try {
-      // 1. Initialize secondary Firebase app to register the barber in Firebase Auth 
-      // without signing out the admin
-      const secondaryApp = initializeApp(firebaseConfig, 'SecondaryApp');
-      const secondaryAuth = getAuth(secondaryApp);
+      if (editingBarber) {
+        // Update existing barber
+        await updateDoc(doc(db, 'users', editingBarber.id), {
+          name,
+          email,
+          phoneNumber: phone,
+          address,
+          specialty: specialty || 'حلاقة شعر وذقن',
+          barberType: barberType || 'men',
+          latitude: parseFloat(latitude) || 30.0444,
+          longitude: parseFloat(longitude) || 31.2357,
+          rating: parseFloat(rating) || 4.8,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        // 1. Initialize secondary Firebase app to register the barber in Firebase Auth 
+        // without signing out the admin
+        const secondaryApp = initializeApp(firebaseConfig, 'SecondaryApp');
+        const secondaryAuth = getAuth(secondaryApp);
 
-      // 2. Create the Auth User
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-      const newUid = userCredential.user.uid;
+        // 2. Create the Auth User
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+        const newUid = userCredential.user.uid;
 
-      // Sign out from secondary app instance to clean up local storage
-      await signOut(secondaryAuth);
+        // Sign out from secondary app instance to clean up local storage
+        await signOut(secondaryAuth);
 
-      // 3. Save the Barber details in the 'users' collection in Firestore
-      await setDoc(doc(db, 'users', newUid), {
-        name,
-        email,
-        phoneNumber: phone,
-        address,
-        specialty: specialty || 'حلاقة شعر وذقن',
-        barberType: barberType || 'men',
-        role: 'barber',
-        latitude: parseFloat(latitude) || 30.0444,
-        longitude: parseFloat(longitude) || 31.2357,
-        rating: parseFloat(rating) || 4.8,
-        reviewsCount: Math.floor(Math.random() * 150) + 50,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        // 3. Save the Barber details in the 'users' collection in Firestore
+        await setDoc(doc(db, 'users', newUid), {
+          name,
+          email,
+          phoneNumber: phone,
+          address,
+          specialty: specialty || 'حلاقة شعر وذقن',
+          barberType: barberType || 'men',
+          role: 'barber',
+          latitude: parseFloat(latitude) || 30.0444,
+          longitude: parseFloat(longitude) || 31.2357,
+          rating: parseFloat(rating) || 4.8,
+          reviewsCount: Math.floor(Math.random() * 150) + 50,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
       // Clear Form and Close Modal
       setName('');
@@ -398,17 +421,49 @@ function ManageBarbers() {
       setLatitude('30.0444');
       setLongitude('31.2357');
       setRating('4.8');
+      setEditingBarber(null);
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') {
         setError('البريد الإلكتروني مستخدم بالفعل لحساب آخر');
       } else {
-        setError('حدث خطأ أثناء إضافة الحلاق: ' + err.message);
+        setError('حدث خطأ أثناء حفظ الحلاق: ' + err.message);
       }
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  const handleEditBarber = (barber) => {
+    setEditingBarber(barber);
+    setName(barber.name || '');
+    setEmail(barber.email || '');
+    setPassword(''); // Don't show existing password
+    setPhone(barber.phoneNumber || barber.phone || '');
+    setSpecialty(barber.specialty || '');
+    setBarberType(barber.barberType || 'men');
+    setAddress(barber.address || '');
+    setLatitude(barber.latitude?.toString() || '30.0444');
+    setLongitude(barber.longitude?.toString() || '31.2357');
+    setRating(barber.rating?.toString() || '4.8');
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingBarber(null);
+    setName('');
+    setEmail('');
+    setPassword('');
+    setPhone('');
+    setAddress('');
+    setSpecialty('');
+    setBarberType('men');
+    setLatitude('30.0444');
+    setLongitude('31.2357');
+    setRating('4.8');
+    setError('');
   };
 
   const handleDeleteBarber = async (barberId) => {
@@ -491,13 +546,22 @@ function ManageBarbers() {
                       <td className="p-5 text-gold-400 font-medium">{barber.specialty || 'حلاقة عامة'}</td>
                       <td className="p-5 text-charcoal-300 max-w-xs leading-relaxed">{barber.address || 'غير مسجل'}</td>
                       <td className="p-5 text-left">
-                        <button
-                          onClick={() => handleDeleteBarber(barber.id)}
-                          className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
-                          title="حذف الحلاق"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEditBarber(barber)}
+                            className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-blue-950/20 text-charcoal-400 hover:text-blue-400 border border-charcoal-800 hover:border-blue-900/30 transition-all"
+                            title="تعديل بيانات الحلاق"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBarber(barber.id)}
+                            className="p-2.5 rounded-lg bg-charcoal-900 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
+                            title="حذف الحلاق"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -529,13 +593,22 @@ function ManageBarbers() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteBarber(barber.id)}
-                      className="p-2 rounded-lg bg-charcoal-950 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
-                      title="حذف الحلاق"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditBarber(barber)}
+                        className="p-2 rounded-lg bg-charcoal-950 hover:bg-blue-950/20 text-charcoal-400 hover:text-blue-400 border border-charcoal-800 hover:border-blue-900/30 transition-all"
+                        title="تعديل بيانات الحلاق"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBarber(barber.id)}
+                        className="p-2 rounded-lg bg-charcoal-950 hover:bg-red-950/20 text-charcoal-400 hover:text-red-400 border border-charcoal-800 hover:border-red-900/30 transition-all"
+                        title="حذف الحلاق"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2">
@@ -573,9 +646,11 @@ function ManageBarbers() {
           <div className="glass-panel w-full max-w-lg rounded-3xl p-8 border border-charcoal-800 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-charcoal-800">
-              <h3 className="text-xl font-bold text-white">إضافة حلاق جديد للنظام</h3>
+              <h3 className="text-xl font-bold text-white">
+                {editingBarber ? 'تعديل بيانات الحلاق' : 'إضافة حلاق جديد للنظام'}
+              </h3>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 className="p-1.5 rounded-lg bg-charcoal-900 border border-charcoal-800 hover:bg-charcoal-800 text-charcoal-400 hover:text-white transition-all"
               >
                 <X className="w-5 h-5" />
@@ -627,23 +702,25 @@ function ManageBarbers() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-charcoal-300 mb-2">كلمة المرور المؤقتة *</label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pr-11 pl-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
-                    dir="ltr"
-                  />
-                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-charcoal-500">
-                    <Lock className="w-4 h-4" />
+              {!editingBarber && (
+                <div>
+                  <label className="block text-xs font-semibold text-charcoal-300 mb-2">كلمة المرور المؤقتة *</label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pr-11 pl-4 py-3 bg-charcoal-900 border border-charcoal-800 focus:border-gold-500 rounded-xl text-white placeholder-charcoal-600 text-sm focus:outline-none focus:ring-1 focus:ring-gold-500 font-inter text-right"
+                      dir="ltr"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-charcoal-500">
+                      <Lock className="w-4 h-4" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-charcoal-300 mb-2">رقم الهاتف *</label>
@@ -789,12 +866,12 @@ function ManageBarbers() {
                       <span>جاري الحفظ...</span>
                     </>
                   ) : (
-                    <span>حفظ الحلاق</span>
+                    <span>{editingBarber ? 'تحديث البيانات' : 'حفظ الحلاق'}</span>
                   )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={handleCloseModal}
                   className="px-6 py-3.5 bg-charcoal-900 border border-charcoal-800 hover:bg-charcoal-800 text-charcoal-300 hover:text-white font-bold rounded-xl transition-all"
                 >
                   إلغاء
