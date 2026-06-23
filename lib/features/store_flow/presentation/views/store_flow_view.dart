@@ -1026,7 +1026,7 @@ Expanded(
                       children: [
 Expanded(
                           child: GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
@@ -1120,7 +1120,7 @@ Expanded(
                       children: [
 Expanded(
                           child: GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: 2,
