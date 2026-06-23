@@ -7,17 +7,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../errors/failures.dart';
 
-/// Service لإدارة جميع عمليات المصادقة عبر Firebase
-/// يستخدم Either type من dartz للتعامل مع الأخطاء بطريقة functional
 class FirebaseAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  /// تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
-  ///
-  /// Returns: Either<Failure, User>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: User في حالة النجاح
   Future<Either<Failure, User>> signInWithEmail({
     required String email,
     required String password,
@@ -30,12 +23,12 @@ class FirebaseAuthService {
 
       if (credential.user == null) {
         return const Left(
-          FirebaseFailure('فشل تسجيل الدخول - لم يتم العثور على المستخدم'),
+          FirebaseFailure('Sign in failed - user not found'),
         );
       }
 
       log(
-        '✅ Firebase Auth: تم تسجيل الدخول بنجاح للمستخدم: ${credential.user!.email}',
+        '✅ Firebase Auth: Successfully signed in user: ${credential.user!.email}',
       );
       return Right(credential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
@@ -46,16 +39,11 @@ class FirebaseAuthService {
     } catch (e, stackTrace) {
       log('❌ Unexpected error in signInWithEmail: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء تسجيل الدخول', stackTrace),
+        UnknownFailure('An unexpected error occurred during sign in', stackTrace),
       );
     }
   }
 
-  /// إنشاء حساب جديد باستخدام البريد الإلكتروني وكلمة المرور
-  ///
-  /// Returns: Either<Failure, User>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: User في حالة النجاح
   Future<Either<Failure, User>> createUserWithEmailAndPassword({
     required String email,
     required String password,
@@ -68,12 +56,12 @@ class FirebaseAuthService {
 
       if (credential.user == null) {
         return const Left(
-          FirebaseFailure('فشل إنشاء الحساب - لم يتم إنشاء المستخدم'),
+          FirebaseFailure('Account creation failed - user not created'),
         );
       }
 
       log(
-        '✅ Firebase Auth: تم إنشاء حساب جديد للمستخدم: ${credential.user!.email}',
+        '✅ Firebase Auth: Created new account for user: ${credential.user!.email}',
       );
       return Right(credential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
@@ -86,21 +74,11 @@ class FirebaseAuthService {
         '❌ Unexpected error in createUserWithEmailAndPassword: ${e.toString()}',
       );
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء إنشاء الحساب', stackTrace),
+        UnknownFailure('An unexpected error occurred during account creation', stackTrace),
       );
     }
   }
 
-  /// إرسال رمز التحقق OTP إلى رقم الهاتف
-  ///
-  /// Parameters:
-  /// - phoneNumber: رقم الهاتف بصيغة دولية (مثال: +966501234567)
-  /// - onCodeSent: callback يتم استدعاؤه عند إرسال الكود بنجاح
-  /// - onVerificationFailed: callback يتم استدعاؤه في حالة فشل التحقق
-  ///
-  /// Returns: Either<Failure, String>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: verificationId في حالة النجاح
   Future<Either<Failure, String>> signInWithPhone({
     required String phoneNumber,
     required Function(String verificationId) onCodeSent,
@@ -114,29 +92,27 @@ class FirebaseAuthService {
         phoneNumber: phoneNumber,
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
-          // يتم استدعاؤه تلقائياً في بعض الحالات (Android فقط)
-          log('📱 Firebase Auth: التحقق التلقائي من الهاتف اكتمل');
+          log('📱 Firebase Auth: Automatic phone verification completed');
           await _auth.signInWithCredential(credential);
         },
         verificationFailed: (FirebaseAuthException e) {
           log(
-            '❌ Firebase Auth: فشل التحقق من رقم الهاتف - ${e.code}: ${e.message}',
+            '❌ Firebase Auth: Phone verification failed - ${e.code}: ${e.message}',
           );
           errorResult = _handleFirebaseAuthException(e);
           onVerificationFailed(e);
         },
         codeSent: (String verificationId, int? resendToken) {
-          log('✅ Firebase Auth: تم إرسال رمز التحقق إلى $phoneNumber');
+          log('✅ Firebase Auth: Verification code sent to $phoneNumber');
           verificationIdResult = verificationId;
           onCodeSent(verificationId);
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          log('⏱️ Firebase Auth: انتهت مهلة استرجاع الكود التلقائي');
+          log('⏱️ Firebase Auth: Auto-retrieval timeout expired');
           verificationIdResult = verificationId;
         },
       );
 
-      // انتظار حتى يتم الحصول على النتيجة
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (errorResult != null) {
@@ -148,25 +124,16 @@ class FirebaseAuthService {
       }
 
       return const Left(
-        FirebaseFailure('فشل إرسال رمز التحقق - لم يتم الحصول على معرف التحقق'),
+        FirebaseFailure('Failed to send verification code - verification ID not obtained'),
       );
     } catch (e, stackTrace) {
       log('❌ Unexpected error in signInWithPhone: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء إرسال رمز التحقق', stackTrace),
+        UnknownFailure('An unexpected error occurred while sending verification code', stackTrace),
       );
     }
   }
 
-  /// التحقق من رمز OTP وإتمام تسجيل الدخول
-  ///
-  /// Parameters:
-  /// - verificationId: معرف التحقق الذي تم الحصول عليه من signInWithPhone
-  /// - smsCode: رمز التحقق الذي أدخله المستخدم
-  ///
-  /// Returns: Either<Failure, User>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: User في حالة النجاح
   Future<Either<Failure, User>> verifyOTP({
     required String verificationId,
     required String smsCode,
@@ -181,12 +148,12 @@ class FirebaseAuthService {
 
       if (userCredential.user == null) {
         return const Left(
-          FirebaseFailure('فشل التحقق من الرمز - لم يتم العثور على المستخدم'),
+          FirebaseFailure('Code verification failed - user not found'),
         );
       }
 
       log(
-        '✅ Firebase Auth: تم التحقق من رمز OTP بنجاح للمستخدم: ${userCredential.user!.phoneNumber}',
+        '✅ Firebase Auth: OTP code verified successfully for user: ${userCredential.user!.phoneNumber}',
       );
       return Right(userCredential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
@@ -195,40 +162,29 @@ class FirebaseAuthService {
     } catch (e, stackTrace) {
       log('❌ Unexpected error in verifyOTP: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء التحقق من الرمز', stackTrace),
+        UnknownFailure('An unexpected error occurred during code verification', stackTrace),
       );
     }
   }
 
-  /// تسجيل الدخول باستخدام حساب Google
-  ///
-  /// Returns: Either<Failure, User>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: User في حالة النجاح
   Future<Either<Failure, User>> signInWithGoogle() async {
     try {
-      // Sign out first to allow re-selecting account
       await _googleSignIn.signOut();
 
-      // Start Google sign in
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
-      // If user cancelled the sign in
       if (googleUser == null) {
         return const Left(FirebaseFailure('Google sign in was cancelled'));
       }
 
-      // Get auth credentials
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      // Create credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase with Google credential
       final userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user == null) {
@@ -270,66 +226,40 @@ class FirebaseAuthService {
     }
   }
 
-  /// تسجيل الخروج من التطبيق
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> signOut() async {
     try {
-      // تسجيل الخروج من Firebase
       await _auth.signOut();
 
-      // تسجيل الخروج من Google (إن كان مسجلاً دخول)
       if (await _googleSignIn.isSignedIn()) {
         await _googleSignIn.signOut();
       }
 
-      log('✅ Firebase Auth: تم تسجيل الخروج بنجاح');
+      log('✅ Firebase Auth: Successfully signed out');
       return const Right(null);
     } catch (e, stackTrace) {
       log('❌ Unexpected error in signOut: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء تسجيل الخروج', stackTrace),
+        UnknownFailure('An unexpected error occurred during sign out', stackTrace),
       );
     }
   }
 
-  /// الحصول على المستخدم الحالي
-  ///
-  /// Returns: User? - المستخدم الحالي أو null إذا لم يكن مسجلاً دخول
   User? getCurrentUser() {
     return _auth.currentUser;
   }
 
-  /// التحقق من أن المستخدم مسجل دخول
-  ///
-  /// Returns: bool - true إذا كان مسجلاً دخول، false إذا لم يكن
   bool isLoggedIn() {
     return _auth.currentUser != null;
   }
 
-  /// Stream لمتابعة تغييرات حالة المصادقة
-  ///
-  /// يتم استدعاؤه عند:
-  /// - تسجيل الدخول
-  /// - تسجيل الخروج
-  /// - تحديث بيانات المستخدم
-  ///
-  /// Returns: Stream<User?> - stream للمستخدم الحالي
   Stream<User?> authStateChanges() {
     return _auth.authStateChanges();
   }
 
-  /// إرسال بريد إلكتروني لإعادة تعيين كلمة المرور
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> sendPasswordResetEmail(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
-      log('✅ Firebase Auth: تم إرسال بريد إعادة تعيين كلمة المرور إلى $email');
+      log('✅ Firebase Auth: Password reset email sent to $email');
       return const Right(null);
     } on FirebaseAuthException catch (e, stackTrace) {
       log(
@@ -340,31 +270,26 @@ class FirebaseAuthService {
       log('❌ Unexpected error in sendPasswordResetEmail: ${e.toString()}');
       return Left(
         UnknownFailure(
-          'حدث خطأ غير متوقع أثناء إرسال بريد إعادة تعيين كلمة المرور',
+          'An unexpected error occurred while sending password reset email',
           stackTrace,
         ),
       );
     }
   }
 
-  /// إرسال بريد تحقق من البريد الإلكتروني
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> sendEmailVerification() async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return const Left(UnauthorizedFailure('لا يوجد مستخدم مسجل دخول'));
+        return const Left(UnauthorizedFailure('No user signed in'));
       }
 
       if (user.emailVerified) {
-        return const Left(ValidationFailure('البريد الإلكتروني مُحقق بالفعل'));
+        return const Left(ValidationFailure('Email is already verified'));
       }
 
       await user.sendEmailVerification();
-      log('✅ Firebase Auth: تم إرسال بريد التحقق إلى ${user.email}');
+      log('✅ Firebase Auth: Verification email sent to ${user.email}');
       return const Right(null);
     } on FirebaseAuthException catch (e, stackTrace) {
       log(
@@ -374,99 +299,79 @@ class FirebaseAuthService {
     } catch (e, stackTrace) {
       log('❌ Unexpected error in sendEmailVerification: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء إرسال بريد التحقق', stackTrace),
+        UnknownFailure('An unexpected error occurred while sending verification email', stackTrace),
       );
     }
   }
 
-  /// إعادة تحميل بيانات المستخدم الحالي
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> reloadUser() async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return const Left(UnauthorizedFailure('لا يوجد مستخدم مسجل دخول'));
+        return const Left(UnauthorizedFailure('No user signed in'));
       }
 
       await user.reload();
-      log('✅ Firebase Auth: تم إعادة تحميل بيانات المستخدم');
+      log('✅ Firebase Auth: User data reloaded');
       return const Right(null);
     } catch (e, stackTrace) {
       log('❌ Unexpected error in reloadUser: ${e.toString()}');
       return Left(
         UnknownFailure(
-          'حدث خطأ غير متوقع أثناء إعادة تحميل بيانات المستخدم',
+          'An unexpected error occurred while reloading user data',
           stackTrace,
         ),
       );
     }
   }
 
-  /// تحديث الاسم المعروض للمستخدم
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> updateDisplayName(String displayName) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return const Left(UnauthorizedFailure('لا يوجد مستخدم مسجل دخول'));
+        return const Left(UnauthorizedFailure('No user signed in'));
       }
 
       await user.updateDisplayName(displayName);
       await user.reload();
-      log('✅ Firebase Auth: تم تحديث الاسم المعروض إلى $displayName');
+      log('✅ Firebase Auth: Display name updated to $displayName');
       return const Right(null);
     } catch (e, stackTrace) {
       log('❌ Unexpected error in updateDisplayName: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء تحديث الاسم', stackTrace),
+        UnknownFailure('An unexpected error occurred while updating name', stackTrace),
       );
     }
   }
 
-  /// تحديث صورة المستخدم
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> updatePhotoURL(String photoURL) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return const Left(UnauthorizedFailure('لا يوجد مستخدم مسجل دخول'));
+        return const Left(UnauthorizedFailure('No user signed in'));
       }
 
       await user.updatePhotoURL(photoURL);
       await user.reload();
-      log('✅ Firebase Auth: تم تحديث صورة المستخدم');
+      log('✅ Firebase Auth: User photo updated');
       return const Right(null);
     } catch (e, stackTrace) {
       log('❌ Unexpected error in updatePhotoURL: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء تحديث الصورة', stackTrace),
+        UnknownFailure('An unexpected error occurred while updating photo', stackTrace),
       );
     }
   }
 
-  /// حذف حساب المستخدم الحالي
-  ///
-  /// Returns: Either<Failure, void>
-  /// - Left: FirebaseFailure في حالة حدوث خطأ
-  /// - Right: void في حالة النجاح
   Future<Either<Failure, void>> deleteUser() async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return const Left(UnauthorizedFailure('لا يوجد مستخدم مسجل دخول'));
+        return const Left(UnauthorizedFailure('No user signed in'));
       }
 
       await user.delete();
-      log('✅ Firebase Auth: تم حذف حساب المستخدم');
+      log('✅ Firebase Auth: User account deleted');
       return const Right(null);
     } on FirebaseAuthException catch (e, stackTrace) {
       log('❌ FirebaseAuthException in deleteUser: ${e.code} - ${e.message}');
@@ -474,74 +379,66 @@ class FirebaseAuthService {
     } catch (e, stackTrace) {
       log('❌ Unexpected error in deleteUser: ${e.toString()}');
       return Left(
-        UnknownFailure('حدث خطأ غير متوقع أثناء حذف الحساب', stackTrace),
+        UnknownFailure('An unexpected error occurred while deleting account', stackTrace),
       );
     }
   }
 
-  /// معالج مركزي لأخطاء Firebase Auth
-  /// يحول أكواد الأخطاء إلى رسائل واضحة باللغة العربية
   Failure _handleFirebaseAuthException(
     FirebaseAuthException e, [
     StackTrace? stackTrace,
   ]) {
     switch (e.code) {
-      // أخطاء تسجيل الدخول
       case 'user-not-found':
         return FirebaseFailure(
-          'لم يتم العثور على حساب بهذا البريد الإلكتروني',
+          'No account found with this email',
           stackTrace,
         );
       case 'wrong-password':
       case 'invalid-credential':
       case 'invalid-login-credentials':
-        return FirebaseFailure('كلمة المرور غير صحيحة', stackTrace);
+        return FirebaseFailure('Incorrect password', stackTrace);
       case 'user-disabled':
-        return FirebaseFailure('تم تعطيل هذا الحساب', stackTrace);
+        return FirebaseFailure('This account has been disabled', stackTrace);
       case 'too-many-requests':
         return FirebaseFailure(
-          'تم تجاوز عدد المحاولات المسموح بها، يرجى المحاولة لاحقاً',
+          'Too many attempts. Please try again later',
           stackTrace,
         );
 
-      // أخطاء إنشاء الحساب
       case 'email-already-in-use':
-        return FirebaseFailure('البريد الإلكتروني مستخدم بالفعل', stackTrace);
+        return FirebaseFailure('Email is already in use', stackTrace);
       case 'weak-password':
-        return ValidationFailure('كلمة المرور ضعيفة جداً', stackTrace);
+        return ValidationFailure('Password is too weak', stackTrace);
       case 'invalid-email':
-        return ValidationFailure('البريد الإلكتروني غير صالح', stackTrace);
+        return ValidationFailure('Invalid email', stackTrace);
       case 'operation-not-allowed':
-        return FirebaseFailure('العملية غير مسموح بها', stackTrace);
+        return FirebaseFailure('Operation not allowed', stackTrace);
 
-      // أخطاء التحقق من الهاتف
       case 'invalid-phone-number':
-        return ValidationFailure('رقم الهاتف غير صالح', stackTrace);
+        return ValidationFailure('Invalid phone number', stackTrace);
       case 'invalid-verification-code':
-        return ValidationFailure('رمز التحقق غير صحيح', stackTrace);
+        return ValidationFailure('Invalid verification code', stackTrace);
       case 'invalid-verification-id':
-        return FirebaseFailure('معرف التحقق غير صالح', stackTrace);
+        return FirebaseFailure('Invalid verification ID', stackTrace);
       case 'session-expired':
         return FirebaseFailure(
-          'انتهت صلاحية الجلسة، يرجى المحاولة مرة أخرى',
+          'Session expired. Please try again',
           stackTrace,
         );
 
-      // أخطاء الشبكة
       case 'network-request-failed':
-        return NetworkFailure('خطأ في الاتصال بالإنترنت', stackTrace);
+        return NetworkFailure('Internet connection error', stackTrace);
 
-      // أخطاء تتطلب إعادة تسجيل دخول
       case 'requires-recent-login':
         return UnauthorizedFailure(
-          'تتطلب هذه العملية تسجيل دخول حديث، يرجى تسجيل الدخول مرة أخرى',
+          'This operation requires recent login. Please sign in again',
           stackTrace,
         );
 
-      // خطأ افتراضي
       default:
         return FirebaseFailure(
-          e.message ?? 'حدث خطأ في عملية المصادقة',
+          e.message ?? 'Authentication error occurred',
           stackTrace,
         );
     }
