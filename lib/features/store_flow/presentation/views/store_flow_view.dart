@@ -2286,7 +2286,8 @@ class StoreCheckoutScreen extends StatelessWidget {
                           SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Ø±Ø§Ø¬Ø¹ Ø§Ù„Ø·Ù„Ø¨ ÙˆØ§Ø¶ØºØ· ØªØ£ÙƒÙŠØ¯. Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© Ø£Ùˆ Ø§Ù„Ø­Ù„Ø§Ù‚ Ø³ÙŠØ³ØªÙ„Ù… ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨ ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ ÙÙŠ Ø§Ù„Ø±Ø³Ø§Ø¦Ù„.',
+                              'راجع الطلب واضغط تأكيد. الإدارة أو الحلاق سيستلم تفاصيل الطلب تلقائيا في الرسائل.',
+                              textDirection: TextDirection.rtl,
                               style: TextStyle(
                                 color: AppColors.textDark,
                                 fontWeight: FontWeight.w700,
